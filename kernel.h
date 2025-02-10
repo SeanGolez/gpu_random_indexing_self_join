@@ -30,12 +30,12 @@ __device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, DTYPE*
 	DTYPE* point, unsigned int* cnt,int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts);
 
 //functions for index on the GPU
-__global__ void kernelIndexComputeNonemptyCells(DTYPE* database, unsigned int *N, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t * pointCellArr);
-__global__ void kernelInitEnumerateDB(unsigned int * databaseVal, unsigned int *N);
+__global__ void kernelIndexComputeNonemptyCells(DTYPE* database, const unsigned int N, const unsigned int whichDatabase, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t * pointCellArr);
+__global__ void kernelInitEnumerateDB(unsigned int * databaseVal, const unsigned int N);
 
 __global__ void kernelIndexComputeAdjacentCells(uint64_t * cellDistCalcArr, uint64_t * uniqueCellArr, uint64_t * cellNumPointsArr, unsigned int * nCells, unsigned int * nNonEmptyCells, int *incrementors, unsigned int * nAdjCells);
 
-__global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE* database, unsigned int *N, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t *cellDistCalcArr,  uint64_t * uniqueCellArr, unsigned int * nNonEmptyCells);
+__global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE* database, const unsigned int N, const unsigned int whichDatabase, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t *cellDistCalcArr,  uint64_t * uniqueCellArr, unsigned int * nNonEmptyCells);
 
 
 __global__ void kernelPairwiseDatabaseRotation( DTYPE * database, const unsigned int N, const unsigned int whichDatabase, DTYPE * theta, unsigned int * dimPair );

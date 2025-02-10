@@ -607,14 +607,14 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 	} //end loop body
 }
 
-__global__ void kernelInitEnumerateDB(unsigned int * databaseVal, unsigned int *N)
+__global__ void kernelInitEnumerateDB(unsigned int * databaseVal, const unsigned int N)
 {
 
 
 	unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
 
 
-	if (tid>=*N){
+	if (tid>=N){
 		return;
 	}
 
@@ -623,14 +623,14 @@ __global__ void kernelInitEnumerateDB(unsigned int * databaseVal, unsigned int *
 		
 }
 
-__global__ void kernelIndexComputeNonemptyCells(DTYPE* database, unsigned int *N, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t * pointCellArr)
+__global__ void kernelIndexComputeNonemptyCells(DTYPE* database, const unsigned int N, const unsigned int whichDatabase, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t * pointCellArr)
 {
 
 
 	unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
 
 
-	if (tid>=*N){
+	if (tid>=N){
 		return;
 	}
 
@@ -640,7 +640,7 @@ __global__ void kernelIndexComputeNonemptyCells(DTYPE* database, unsigned int *N
 
 	unsigned int tmpNDCellIdx[NUMINDEXEDDIM];
 	for (int j=0; j<NUMINDEXEDDIM; j++){
-		tmpNDCellIdx[j]=((database[pointID+j]-minArr[j])/(*epsilon));
+		tmpNDCellIdx[j]=((database[(N*GPUNUMDIM*whichDatabase) + pointID + j]-minArr[j])/(*epsilon));
 	}
 	uint64_t linearID=getLinearID_nDimensionsGPU(tmpNDCellIdx, nCells, NUMINDEXEDDIM);
 
@@ -699,12 +699,12 @@ __global__ void kernelIndexComputeAdjacentCells(uint64_t * celllDistCalcArr, uin
 }
 
 
-__global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE* database, unsigned int *N, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t *cellDistCalcArr,  uint64_t * uniqueCellArr, unsigned int * nNonEmptyCells)
+__global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE* database, const unsigned int N, const unsigned int whichDatabase, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t *cellDistCalcArr,  uint64_t * uniqueCellArr, unsigned int * nNonEmptyCells)
 {
 	unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
 	int tempIdx;
 
-	if (tid>=*N){
+	if (tid>=N){
 		return;
 	}
 
@@ -712,7 +712,7 @@ __global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE*
 
 	unsigned int tmpNDCellIdx[NUMINDEXEDDIM];
 	for (int j=0; j<NUMINDEXEDDIM; j++){
-		tmpNDCellIdx[j]=((database[pointID+j]-minArr[j])/(*epsilon));
+		tmpNDCellIdx[j]=((database[(N*GPUNUMDIM*whichDatabase) + pointID + j]-minArr[j])/(*epsilon));
 	}
 	uint64_t linearID=getLinearID_nDimensionsGPU(tmpNDCellIdx, nCells, NUMINDEXEDDIM);
 

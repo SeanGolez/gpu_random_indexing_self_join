@@ -40,7 +40,7 @@ using namespace std;
 uint64_t getLinearID_nDimensions(unsigned int *indexes, unsigned int *dimLen, unsigned int nDimensions);
 void getNDimIndexesFromLinearIdx(unsigned int *indexes, unsigned int *dimLen, unsigned int nDimensions, uint64_t linearId);
 void populateNDGridIndexAndLookupArray(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, struct gridCellLookup **gridCellLookupArr, struct grid **index, unsigned int *indexLookupArr, DTYPE *minArr, unsigned int *nCells, uint64_t totalCells, unsigned int *nNonEmptyCells, unsigned int **gridCellNDMask, unsigned int *gridCellNDMaskOffsets, unsigned int *nNDMaskElems, std::unordered_map<uint64_t, std::vector<uint64_t>> &uniqueGridAdjacentCells, std::vector<std::vector<int>> &incrementorVects);
-void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE *indexOffset);
+void generateNDGridDimensions(DTYPE * database, const unsigned int DBSIZE,  const unsigned int whichDatabase, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE *indexOffset);
 void importNDDataset(std::vector<std::vector<DTYPE>> *dataPoints, char *fname);
 void ReorderByDimension(std::vector<std::vector<DTYPE>> *NDdataPoints);
 void computeNumDistanceCalcs(std::vector<workArrayPnt> *totalPointsWork, unsigned int *nNonEmptyCells, gridCellLookup *gridCellLookupArr, grid *index, std::unordered_map<uint64_t, std::vector<uint64_t>> *uniqueGridAdjacentCells, std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE *minArr, unsigned int *nCells, DTYPE &epsilon);
@@ -193,7 +193,7 @@ int main(int argc, char *argv[])
 
 	double rotations_time_start = omp_get_wtime();
 
-	std::vector<std::vector<std::vector<DTYPE>>> allRotatedNDdataPoints;
+	// std::vector<std::vector<std::vector<DTYPE>>> allRotatedNDdataPoints;
 	
 	// generate random point rotations
 	for( int i = 0; i < NUMRANDROTATIONS; i++ ) {
@@ -221,7 +221,9 @@ int main(int argc, char *argv[])
 	cout << "\nError: database Got error with code " << errCode << endl; 
 	}
 
+	/*
 	//printf("\n\n");
+	double fill_vector_time_start = omp_get_wtime();
 	for( int i=0; i<NUMRANDROTATIONS; i++ ){
 		std::vector<std::vector<DTYPE>> tmpDBVector;
 		for (int j=0; j<(DBSIZE); j++){
@@ -236,6 +238,9 @@ int main(int argc, char *argv[])
 		//printf("\n\n");
 		allRotatedNDdataPoints.emplace_back(tmpDBVector);
 	}
+	double fill_vector_time_end = omp_get_wtime();
+	printf("\nTime to fill vector: %f", (fill_vector_time_end-fill_vector_time_start));
+	*/
 
 
 	// inititalize arrays
@@ -342,7 +347,7 @@ int main(int argc, char *argv[])
 			unsigned int nNonEmptyCells = 0;
 
 			double tstart_index = omp_get_wtime();
-			generateNDGridDimensions(&allRotatedNDdataPoints[rotationIdx], epsilon, minArr, maxArr, nCells, &totalCells, indexOffsetPtr);
+			generateNDGridDimensions(database, DBSIZE, rotationIdx, epsilon, minArr, maxArr, nCells, &totalCells, indexOffsetPtr);
 			printf("\nGrid: total cells (including empty) %lu", totalCells);
 
 			// allocate memory for index now that we know the number of cells
@@ -352,7 +357,7 @@ int main(int argc, char *argv[])
 			struct gridCellLookup *gridCellLookupArr; // allocate in the populateDNGridIndexAndLookupArray -- list of non-empty cells
 
 			// ids of the elements in the database that are found in each grid cell
-			unsigned int *indexLookupArr = new unsigned int[allRotatedNDdataPoints[rotationIdx].size()];
+			unsigned int *indexLookupArr = new unsigned int[DBSIZE];
 
 			// number of distance calculations per point
 			std::vector<workArrayPnt> totalPointsWork;
@@ -360,7 +365,7 @@ int main(int argc, char *argv[])
 			// std::unordered_map<uint64_t, std::vector<uint64_t>> uniqueGridAdjacentCells;
 			// populateNDGridIndexAndLookupArray(&NDdataPoints, epsilon, &gridCellLookupArr, &index, indexLookupArr, minArr, nCells, totalCells, &nNonEmptyCells, &gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, uniqueGridAdjacentCells, incrementorVects);
 			
-			populateNDGridIndexAndLookupArrayGPU(&allRotatedNDdataPoints[rotationIdx], &epsilon, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells, &incrementorVects, &totalPointsWork);
+			populateNDGridIndexAndLookupArrayGPU(dev_database, DBSIZE, rotationIdx, &epsilon, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells, &incrementorVects, &totalPointsWork);
 			double tend_index = omp_get_wtime();
 			printf("\nTime to index (not counted in the time): %f", tend_index - tstart_index);
 
@@ -382,9 +387,9 @@ int main(int argc, char *argv[])
 				allGridCellLookupArrVec.push_back(gridCellLookupArr[i]);
 			}
 
-			for (int i = 0; i < allRotatedNDdataPoints[rotationIdx].size(); i++)
+			for (int i = 0; i < DBSIZE; i++)
 			{
-				allIndexLookupArr[i + (idxCounter * allRotatedNDdataPoints[rotationIdx].size())] = indexLookupArr[i];
+				allIndexLookupArr[i + (idxCounter * DBSIZE)] = indexLookupArr[i];
 			}
 
 			printf("\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n");
@@ -554,26 +559,27 @@ int main(int argc, char *argv[])
 	double tstart = omp_get_wtime();
 
 	double kernelTimeWithoutBatchEstimator;
-	kernelTimeWithoutBatchEstimator = distanceTableNDGridBatches(&allRotatedNDdataPoints, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs, whichIndexPoints);
+	kernelTimeWithoutBatchEstimator = distanceTableNDGridBatches(dev_database, DBSIZE, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs, whichIndexPoints);
 
 	double tend = omp_get_wtime();
 
 	printf("\nTime to get neighbors: %f\n", (tend - tstart));
 
-	
-	printf("\nTotal time: %f\n", (entire_time_end - entire_time_start) + timeReorderByDimVariance);
 	double totalTime = (tend - entire_time_start) + timeReorderByDimVariance;
+	double totalTimeMinusGettingNeighbors = (entire_time_end - entire_time_start) + timeReorderByDimVariance;
 	double totalTimeMinusBatchEstimator = (entire_time_end - entire_time_start) + kernelTimeWithoutBatchEstimator + timeReorderByDimVariance;
-	printf("\nTotal time minus batch estimator: %f\n", (entire_time_end - entire_time_start) + kernelTimeWithoutBatchEstimator + timeReorderByDimVariance);
+	printf("\nTotal time: %f\n", totalTime);
+	printf("\nTotal time minus getting neighbors: %f\n", totalTimeMinusGettingNeighbors);
+	printf("\nTotal time minus batch estimator: %f\n", totalTimeMinusBatchEstimator);
 
-	gpu_stats << totalTime << ", " << inputFname << ", " << epsilon << ", " << totalNeighbors << ", GPUNUMDIM/NUMINDEXEDDIM/NUMRANDINDEXES/NUMRANDROTATIONS/NUMPAIRROTATIONS/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): " << GPUNUMDIM << ", " << NUMINDEXEDDIM << ", " << NUMRANDINDEXES << ", " << NUMRANDROTATIONS << ", " << NUMPAIRROTATIONS << ", " << ILP << ", " << STAMP << ", " << SORT << ", " << REORDER << ", " << SHORTCIRCUIT << ", " << QUERYREORDER << ", " << STR(DTYPE) << endl;
+	gpu_stats << totalTimeMinusBatchEstimator << ", " << inputFname << ", " << epsilon << ", " << totalNeighbors << ", GPUNUMDIM/NUMINDEXEDDIM/NUMRANDINDEXES/NUMRANDROTATIONS/NUMPAIRROTATIONS/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): " << GPUNUMDIM << ", " << NUMINDEXEDDIM << ", " << NUMRANDINDEXES << ", " << NUMRANDROTATIONS << ", " << NUMPAIRROTATIONS << ", " << ILP << ", " << STAMP << ", " << SORT << ", " << REORDER << ", " << SHORTCIRCUIT << ", " << QUERYREORDER << ", " << STR(DTYPE) << endl;
 	gpu_stats.close();
 
 	// remove after testing
 	#if TESTSCRIPT == 1
 	char test_fname[] = "py_test_stats.txt";
 	gpu_stats.open(test_fname, ios::app);
-	gpu_stats << inputFname << ',' << epsilon << ',' << NUMRANDINDEXES << ',' << NUMRANDROTATIONS << ',' << totalTimeMinusBatchEstimator << ',' << kernelTimeWithoutBatchEstimator << ',' << workCounts[0] << ',' << workCounts[1] << ',' << totalNeighbors << ',' << RANDOMOFFSETSAMEALLDIM << ',' << FIXEDOFFSETALLDIM << ',' << RANDOMOFFSETFOREACHDIM << endl;
+	gpu_stats << inputFname << ',' << epsilon << ',' << NUMRANDINDEXES << ',' << NUMRANDROTATIONS << ',' << totalTime << ',' << totalTimeMinusBatchEstimator << ',' << workCounts[0] << ',' << workCounts[1] << ',' << totalNeighbors << ',' << RANDOMOFFSETSAMEALLDIM << ',' << FIXEDOFFSETALLDIM << ',' << RANDOMOFFSETFOREACHDIM << endl;
 	gpu_stats.close();
 	#endif
 
@@ -843,7 +849,7 @@ void getNDimIndexesFromLinearIdx(unsigned int *indexes, unsigned int *dimLen, un
 // we can use this as an offset to calculate where points are located in the grid
 // max arr- the maximum value of the points in each dimensions + epsilon
 // returns the time component of sorting the dimensions when SORT=1
-void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE *indexOffset)
+void generateNDGridDimensions(DTYPE * database, const unsigned int DBSIZE,  const unsigned int whichDatabase, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE *indexOffset)
 {
 
 	printf("\n\n*****************************\nGenerating grid dimensions.\n*****************************\n");
@@ -853,21 +859,22 @@ void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTY
 	// make the min/max values for each grid dimension the first data element
 	for (int j = 0; j < NUMINDEXEDDIM; j++)
 	{
-		minArr[j] = (*NDdataPoints)[0][j];
-		maxArr[j] = (*NDdataPoints)[0][j];
+		minArr[j] = database[(DBSIZE*GPUNUMDIM*whichDatabase) + j];
+		maxArr[j] = database[(DBSIZE*GPUNUMDIM*whichDatabase) + j];
 	}
 
-	for (int i = 1; i < NDdataPoints->size(); i++)
+	for (int i = 1; i < DBSIZE; i++)
 	{
 		for (int j = 0; j < NUMINDEXEDDIM; j++)
 		{
-			if ((*NDdataPoints)[i][j] < minArr[j])
+			DTYPE pointDimVal = database[(DBSIZE*GPUNUMDIM*whichDatabase) + (i * GPUNUMDIM) + j];
+			if (pointDimVal < minArr[j])
 			{
-				minArr[j] = (*NDdataPoints)[i][j];
+				minArr[j] = pointDimVal;
 			}
-			if ((*NDdataPoints)[i][j] > maxArr[j])
+			if (pointDimVal > maxArr[j])
 			{
-				maxArr[j] = (*NDdataPoints)[i][j];
+				maxArr[j] = pointDimVal;
 			}
 		}
 	}

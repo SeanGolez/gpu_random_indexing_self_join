@@ -5,7 +5,7 @@
 
 void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPoints, DTYPE* epsilon, struct table * neighborTable, unsigned long long int * totalNeighbors);
 
-double distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * allRotatedNDdataPoints, DTYPE * epsilon, struct grid * allIndex, 
+double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE, DTYPE * epsilon, struct grid * allIndex, 
 	struct gridCellLookup * allGridCellLookupArr, unsigned int * allNNonEmptyCells, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * allIndexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, CTYPE* workCounts, unsigned int * orderedIndexPntIDs, std::vector<indexArrayPntGroups> * indexGroups, unsigned int * orderedQueryPntIDs,
@@ -21,7 +21,7 @@ void constructNeighborTableKeyValueWithPtrs(int * pointIDKey, int * pointInDistV
 
 void warmUpGPU();
 
-void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDdataPoints, DTYPE *epsilon, DTYPE* minArr,  uint64_t totalCells, unsigned int * nCells, struct gridCellLookup ** gridCellLookupArr, struct grid ** index, unsigned int * indexLookupArr, unsigned int *nNonEmptyCells, std::vector<std::vector<int>> *incrementorVects, std::vector<workArrayPnt> *totalPointsWork);
+void populateNDGridIndexAndLookupArrayGPU(DTYPE * dev_database, const unsigned int DBSIZE,  const unsigned int whichDatabase, DTYPE *epsilon, DTYPE* minArr,  uint64_t totalCells, unsigned int * nCells, struct gridCellLookup ** gridCellLookupArr, struct grid ** index, unsigned int * indexLookupArr, unsigned int *nNonEmptyCells, std::vector<std::vector<int>> *incrementorVects, std::vector<workArrayPnt> *totalPointsWork);
 
 //for the brute force version without batches
 void constructNeighborTableKeyValue(int * pointIDKey, int * pointInDistValue, struct table * neighborTable, unsigned int * cnt);
