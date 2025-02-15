@@ -5,14 +5,14 @@
 
 void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPoints, DTYPE* epsilon, struct table * neighborTable, unsigned long long int * totalNeighbors);
 
-double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE, DTYPE * epsilon, struct grid * allIndex, 
+double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE, unsigned int NUMTOTALINDEXES, DTYPE * epsilon, struct grid * allIndex, 
 	struct gridCellLookup * allGridCellLookupArr, unsigned int * allNNonEmptyCells, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * allIndexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, CTYPE* workCounts, unsigned int * orderedIndexPntIDs, std::vector<indexArrayPntGroups> * indexGroups, unsigned int * orderedQueryPntIDs,
 	unsigned int * whichIndexPoints);
 
 
-unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
+unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, unsigned int NUMTOTALINDEXES, DTYPE epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
 	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, 
 	unsigned int * dev_orderedQueryPntIDs, gridCellLookup ** dev_startGridPtrs, gridCellLookup ** dev_stopGridPtrs, grid ** dev_startIndexPtrs,
 	unsigned int * retNumBatches, unsigned int * retGPUBufferSize);

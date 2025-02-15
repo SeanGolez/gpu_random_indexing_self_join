@@ -523,7 +523,10 @@ unsigned int pointID=pointIdx*(GPUNUMDIM);
 #endif
 
 unsigned int whichIndex = whichIndexPoints[pointIdx];
-unsigned int whichDatabase = whichIndex % NUMRANDROTATIONS;
+unsigned int whichDatabase = 0;
+if( whichIndex >= (NUMRANDINDEXES + 1)) {
+	whichDatabase = whichIndex - NUMRANDINDEXES;
+}
 
 //make a local copy of the point
 DTYPE point[GPUNUMDIM];

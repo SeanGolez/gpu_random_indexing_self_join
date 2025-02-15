@@ -83,6 +83,7 @@ bool compareIndexArrayByNumDistanceCalcs(const indexArrayPnt& a, const indexArra
 #ifndef PYTHON // standard C version
 int main(int argc, char *argv[])
 {
+	unsigned int NUMTOTALINDEXES = 1 + (NUMRANDINDEXES + NUMRANDROTATIONS);
 
 	// check that the number of data dimensions is greater than or equal to the number of indexed dimensions
 	assert(GPUNUMDIM >= NUMINDEXEDDIM);
@@ -163,18 +164,18 @@ int main(int argc, char *argv[])
 	unsigned int DBSIZE;
 	DBSIZE=NDdataPoints.size();
 
-	DTYPE* database = (DTYPE*)malloc(sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS));  
+	DTYPE* database = (DTYPE*)malloc(sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS+1));  
 	DTYPE* dev_database;
 	
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS));		
+	errCode=cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS+1));		
 	if(errCode != cudaSuccess) {
 	cout << "\nError: database alloc -- error with code " << errCode << endl; cout.flush(); 
 	}
 
 
 	//copy the database from the ND vector to the array, add copy for each random rotation:
-	for( int i=0; i<NUMRANDROTATIONS; i++ ){
+	for( int i=0; i<NUMRANDROTATIONS+1; i++ ){
 		for (int j=0; j<(DBSIZE); j++){
 			std::copy(NDdataPoints[j].begin(), NDdataPoints[j].end(), database+((DBSIZE)*GPUNUMDIM*i)+(j*(GPUNUMDIM)));
 		}
@@ -182,7 +183,7 @@ int main(int argc, char *argv[])
 
 
 	//copy database to the device
-	errCode=cudaMemcpy(dev_database, database, sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS), cudaMemcpyHostToDevice);	
+	errCode=cudaMemcpy(dev_database, database, sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS+1), cudaMemcpyHostToDevice);	
 	if(errCode != cudaSuccess) {
 	cout << "\nError: database Got error with code " << errCode << endl; 
 	}
@@ -196,19 +197,15 @@ int main(int argc, char *argv[])
 	// std::vector<std::vector<std::vector<DTYPE>>> allRotatedNDdataPoints;
 	
 	// generate random point rotations
-	for( int i = 0; i < NUMRANDROTATIONS; i++ ) {
-		printf("\nRotation %d", i+1);
-		printf("\n~~~~~~~~~~~");
+	// NOTE: leave i=0 as the original database
+	for( int i = 1; i < NUMRANDROTATIONS+1; i++ ) {
+		// printf("\nRotation %d", i+1);
+		// printf("\n~~~~~~~~~~~");
 
-		if( i == 0 ) {
-			printf("\nNo rotation");
-		}
-		else {
-			rotateOnGPU(dev_database, DBSIZE, i);
-		}
+		rotateOnGPU(dev_database, DBSIZE, i);
 
-		cout << endl;
-		printf("\n");
+		// cout << endl;
+		// printf("\n");
 	}
 
 	double rotations_time_end = omp_get_wtime();
@@ -216,7 +213,7 @@ int main(int argc, char *argv[])
 	printf("\nTime to get rotations: %f", (rotations_time_end-rotations_time_start));
 
 
-	errCode=cudaMemcpy(database, dev_database, sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS), cudaMemcpyDeviceToHost);	
+	errCode=cudaMemcpy(database, dev_database, sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS+1), cudaMemcpyDeviceToHost);	
 	if(errCode != cudaSuccess) {
 	cout << "\nError: database Got error with code " << errCode << endl; 
 	}
@@ -245,13 +242,13 @@ int main(int argc, char *argv[])
 
 	// inititalize arrays
 	std::vector<std::vector<workArrayPnt>> allTotalPointsWork;
-	DTYPE *allMinArr = new DTYPE[NUMINDEXEDDIM * NUMRANDINDEXES * NUMRANDROTATIONS];
-	unsigned int *allNCells = new unsigned int[NUMINDEXEDDIM * NUMRANDINDEXES * NUMRANDROTATIONS];
-	unsigned int *allNNonEmptyCells = new unsigned int[NUMRANDINDEXES * NUMRANDROTATIONS];
+	DTYPE *allMinArr = new DTYPE[NUMINDEXEDDIM * NUMTOTALINDEXES];
+	unsigned int *allNCells = new unsigned int[NUMINDEXEDDIM * NUMTOTALINDEXES];
+	unsigned int *allNNonEmptyCells = new unsigned int[NUMTOTALINDEXES];
 
 	std::vector<struct grid> allIndexVec;
 	std::vector<struct gridCellLookup> allGridCellLookupArrVec;
-	unsigned int *allIndexLookupArr = new unsigned int[NDdataPoints.size() * NUMRANDINDEXES * NUMRANDROTATIONS];
+	unsigned int *allIndexLookupArr = new unsigned int[NDdataPoints.size() * NUMTOTALINDEXES];
 
 	// maps each non empty cell to its adjacent cells, including itself
 	// get all incrementors to find adjacent cells (vectors to add to position to get each adjecent cell)
@@ -272,10 +269,28 @@ int main(int argc, char *argv[])
 	std::vector<DTYPE> allOffsets;
 
 	unsigned int idxCounter = 0;
+	DTYPE indexOffsetPtr[NUMINDEXEDDIM];
 
+	// TODO: this is currently making 2 of the default index
 	// get num distance calcs for each point for each index
-	for (int indexIdx = 0; indexIdx < NUMRANDINDEXES; indexIdx++)
+	for (int indexIdx = 0; indexIdx < NUMTOTALINDEXES; indexIdx++)
 	{
+		// display the offset
+		printf("\n\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+");
+		
+		// use default rotation for indexes
+		unsigned int rotationIdx = 0;
+		if( indexIdx >= (NUMRANDINDEXES + 1)) {
+			rotationIdx = indexIdx - NUMRANDINDEXES;
+			printf("\nRotation %d", rotationIdx);
+		}
+		else if( indexIdx > 0 ) {
+			printf("\nOffset %d", indexIdx);
+		}
+		else {
+			printf("\nOriginal Index");
+		}
+
 		#if RANDOMOFFSETSAMEALLDIM == 1 || FIXEDOFFSETALLDIM == 1
 		DTYPE indexOffset;
 		DTYPE* indexOffsetPtr;
@@ -304,9 +319,9 @@ int main(int argc, char *argv[])
 			indexOffsetPtr = &indexOffset;
 		}
 		#elif RANDOMOFFSETFOREACHDIM == 1
-		DTYPE indexOffsetPtr[NUMINDEXEDDIM];
 		// use no offset index for first iteration and offset for second
-		if (indexIdx == 0)
+		// use no offset if using rotation
+		if (indexIdx == 0 || indexIdx >= (NUMRANDINDEXES + 1))
 		{
 			for( int i=0; i<NUMINDEXEDDIM; i++)
 			{
@@ -323,89 +338,72 @@ int main(int argc, char *argv[])
 		}
 		#endif
 
-		for( int rotationIdx = 0; rotationIdx < NUMRANDROTATIONS; rotationIdx++ )
+		DTYPE *minArr = new DTYPE[NUMINDEXEDDIM];
+		DTYPE *maxArr = new DTYPE[NUMINDEXEDDIM];
+		unsigned int *nCells = new unsigned int[NUMINDEXEDDIM];
+		uint64_t totalCells = 0;
+		unsigned int nNonEmptyCells = 0;
+
+		double tstart_index = omp_get_wtime();
+		generateNDGridDimensions(database, DBSIZE, rotationIdx, epsilon, minArr, maxArr, nCells, &totalCells, indexOffsetPtr);
+		printf("\nGrid: total cells (including empty) %lu", totalCells);
+
+		// allocate memory for index now that we know the number of cells
+		// the grid struct itself
+		// the grid lookup array that accompanys the grid -- so we only send the non-empty cells
+		struct grid *index;						  // allocate in the populateDNGridIndexAndLookupArray -- only index the non-empty cells
+		struct gridCellLookup *gridCellLookupArr; // allocate in the populateDNGridIndexAndLookupArray -- list of non-empty cells
+
+		// ids of the elements in the database that are found in each grid cell
+		unsigned int *indexLookupArr = new unsigned int[DBSIZE];
+
+		// number of distance calculations per point
+		std::vector<workArrayPnt> totalPointsWork;
+
+		// std::unordered_map<uint64_t, std::vector<uint64_t>> uniqueGridAdjacentCells;
+		// populateNDGridIndexAndLookupArray(&NDdataPoints, epsilon, &gridCellLookupArr, &index, indexLookupArr, minArr, nCells, totalCells, &nNonEmptyCells, &gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, uniqueGridAdjacentCells, incrementorVects);
+		
+		populateNDGridIndexAndLookupArrayGPU(dev_database, DBSIZE, rotationIdx, &epsilon, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells, &incrementorVects, &totalPointsWork);
+		double tend_index = omp_get_wtime();
+		printf("\nTime to index (not counted in the time): %f", tend_index - tstart_index);
+
+		// add work for each point vector to total
+		allTotalPointsWork.push_back(totalPointsWork);
+
+		// copy over all data to array positions for current random index
+		for (int i = 0; i < NUMINDEXEDDIM; i++)
 		{
-			// display the offset
-			printf("\n\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+");
-			printf("\nIndex Offset %d", indexIdx+1);
-			/*
-			#if RANDOMOFFSETSAMEALLDIM == 1 || FIXEDOFFSETALLDIM == 1
-			printf("%f", *indexOffsetPtr);
-			#elif RANDOMOFFSETFOREACHDIM == 1
-			for( int i=0; i<NUMINDEXEDDIM; i++)
-			{
-				printf("%f, ", indexOffsetPtr[i]);
-			}
-			#endif
-			*/
-			printf("\nRotation %d", rotationIdx+1);
-
-			DTYPE *minArr = new DTYPE[NUMINDEXEDDIM];
-			DTYPE *maxArr = new DTYPE[NUMINDEXEDDIM];
-			unsigned int *nCells = new unsigned int[NUMINDEXEDDIM];
-			uint64_t totalCells = 0;
-			unsigned int nNonEmptyCells = 0;
-
-			double tstart_index = omp_get_wtime();
-			generateNDGridDimensions(database, DBSIZE, rotationIdx, epsilon, minArr, maxArr, nCells, &totalCells, indexOffsetPtr);
-			printf("\nGrid: total cells (including empty) %lu", totalCells);
-
-			// allocate memory for index now that we know the number of cells
-			// the grid struct itself
-			// the grid lookup array that accompanys the grid -- so we only send the non-empty cells
-			struct grid *index;						  // allocate in the populateDNGridIndexAndLookupArray -- only index the non-empty cells
-			struct gridCellLookup *gridCellLookupArr; // allocate in the populateDNGridIndexAndLookupArray -- list of non-empty cells
-
-			// ids of the elements in the database that are found in each grid cell
-			unsigned int *indexLookupArr = new unsigned int[DBSIZE];
-
-			// number of distance calculations per point
-			std::vector<workArrayPnt> totalPointsWork;
-
-			// std::unordered_map<uint64_t, std::vector<uint64_t>> uniqueGridAdjacentCells;
-			// populateNDGridIndexAndLookupArray(&NDdataPoints, epsilon, &gridCellLookupArr, &index, indexLookupArr, minArr, nCells, totalCells, &nNonEmptyCells, &gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, uniqueGridAdjacentCells, incrementorVects);
-			
-			populateNDGridIndexAndLookupArrayGPU(dev_database, DBSIZE, rotationIdx, &epsilon, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells, &incrementorVects, &totalPointsWork);
-			double tend_index = omp_get_wtime();
-			printf("\nTime to index (not counted in the time): %f", tend_index - tstart_index);
-
-			// add work for each point vector to total
-			allTotalPointsWork.push_back(totalPointsWork);
-
-			// copy over all data to array positions for current random index
-			for (int i = 0; i < NUMINDEXEDDIM; i++)
-			{
-				allMinArr[i + (idxCounter * NUMINDEXEDDIM)] = minArr[i];
-				allNCells[i + (idxCounter * NUMINDEXEDDIM)] = nCells[i];
-			}
-
-			allNNonEmptyCells[idxCounter] = nNonEmptyCells;
-
-			for (int i = 0; i < nNonEmptyCells; i++)
-			{
-				allIndexVec.push_back(index[i]);
-				allGridCellLookupArrVec.push_back(gridCellLookupArr[i]);
-			}
-
-			for (int i = 0; i < DBSIZE; i++)
-			{
-				allIndexLookupArr[i + (idxCounter * DBSIZE)] = indexLookupArr[i];
-			}
-
-			printf("\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n");
-
-			delete[] minArr;
-			delete[] maxArr;
-			delete[] nCells;
-			delete[] indexLookupArr;
-			minArr = NULL;
-			maxArr = NULL;
-			nCells = NULL;
-			indexLookupArr = NULL;
-
-			idxCounter++;
+			allMinArr[i + (idxCounter * NUMINDEXEDDIM)] = minArr[i];
+			allNCells[i + (idxCounter * NUMINDEXEDDIM)] = nCells[i];
 		}
+
+		allNNonEmptyCells[idxCounter] = nNonEmptyCells;
+
+		for (int i = 0; i < nNonEmptyCells; i++)
+		{
+			allIndexVec.push_back(index[i]);
+			allGridCellLookupArrVec.push_back(gridCellLookupArr[i]);
+		}
+
+		for (int i = 0; i < DBSIZE; i++)
+		{
+			allIndexLookupArr[i + (idxCounter * DBSIZE)] = indexLookupArr[i];
+		}
+
+		printf("\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n");
+
+		delete[] minArr;
+		delete[] maxArr;
+		delete[] nCells;
+		delete[] indexLookupArr;
+		minArr = NULL;
+		maxArr = NULL;
+		nCells = NULL;
+		indexLookupArr = NULL;
+
+		idxCounter++;
 	}
+
 
 	// create arrays with index for each random index
 	struct grid *allIndex = new grid[allIndexVec.size()];
@@ -435,7 +433,7 @@ int main(int argc, char *argv[])
 		unsigned int whichIdx;
 		unsigned int leastDistCalcs = UINT_MAX;
 		// loop through each "random" index
-		for (int j = 0; j < NUMRANDINDEXES * NUMRANDROTATIONS; j++)
+		for (int j = 0; j < NUMTOTALINDEXES; j++)
 		{
 			if (allTotalPointsWork[j][i].numDistCalcs < leastDistCalcs)
 			{
@@ -504,13 +502,24 @@ int main(int argc, char *argv[])
 	// get divider to adjust batches to index size
 	//DTYPE * batchDivider = (DTYPE *)malloc(sizeof(DTYPE) * NUMRANDINDEXES);
 
-	for(int i=0; i<NUMRANDINDEXES * NUMRANDROTATIONS; i++) {
+	for(int i=0; i<NUMTOTALINDEXES; i++) {
         unsigned int count = std::count_if(indexPoints.begin(), indexPoints.end(), [&i](const indexArrayPnt& p) {
             return p.whichIndex == i; // Compare whichIndex with i
         });
         
         // Print the result
-        printf("Number of points for index %d: %d\n", i, count);
+
+		if( i == 0 ) {
+			printf("Number of points for original index: \t%d\n", count);
+		}
+		else if( i < (NUMRANDINDEXES + 1)) {
+			printf("Number of points for offset %d: \t\t%d\n", i, count);
+		}
+		else {
+			printf("Number of points for rotation %d: \t%d\n", i - NUMRANDINDEXES , count);
+		}
+
+        
 
 		/*
 		batchDivider[i] = (DTYPE)count / (DTYPE)indexPoints.size();
@@ -530,19 +539,19 @@ int main(int argc, char *argv[])
 		orderedIndexPntIDs[i] = indexPoints[i].pntIdx;
 	}
 
-	// output size of each array in byes
+	// output size of each array in megabytes
 	unsigned int totalNNonemptyCells = 0;
-	for( int i=0; i<NUMRANDINDEXES * NUMRANDROTATIONS; i ++)
+	for( int i=0; i<NUMTOTALINDEXES; i ++)
 	{
 		totalNNonemptyCells += allNNonEmptyCells[i];
 	}
 
 	printf("\nSize of allIndex: %lu MB", (sizeof(struct grid)*(totalNNonemptyCells))/(1024*1024));
-	printf("\nSize of allIndexLookupArr: %lu MB", (sizeof(unsigned int)*(NDdataPoints.size())*(NUMRANDINDEXES)*(NUMRANDROTATIONS))/(1024*1024));
+	printf("\nSize of allIndexLookupArr: %lu MB", (sizeof(unsigned int)*(NDdataPoints.size())*(NUMTOTALINDEXES))/(1024*1024));
 	printf("\nSize of allGridCellLookupArr: %lu MB", (sizeof(struct gridCellLookup)*(totalNNonemptyCells))/(1024*1024));
-	printf("\nSize of allMinArr: %lu MB", (sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTATIONS))/(1024*1024));
-	printf("\nSize of allNCells: %lu MB", (sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTATIONS))/(1024*1024));
-	printf("\nSize of allNNonEmptyCells: %lu MB\n", (sizeof(unsigned int)*(NUMRANDINDEXES)*(NUMRANDROTATIONS))/(1024*1024));
+	printf("\nSize of allMinArr: %lu MB", (sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMTOTALINDEXES))/(1024*1024));
+	printf("\nSize of allNCells: %lu MB", (sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMTOTALINDEXES))/(1024*1024));
+	printf("\nSize of allNNonEmptyCells: %lu MB\n", (sizeof(unsigned int)*(NUMTOTALINDEXES))/(1024*1024));
 
 	uint64_t totalNeighbors = 0;
 	neighborTableLookup *neighborTable = new neighborTableLookup[NDdataPoints.size()];
@@ -559,7 +568,7 @@ int main(int argc, char *argv[])
 	double tstart = omp_get_wtime();
 
 	double kernelTimeWithoutBatchEstimator;
-	kernelTimeWithoutBatchEstimator = distanceTableNDGridBatches(dev_database, DBSIZE, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs, whichIndexPoints);
+	kernelTimeWithoutBatchEstimator = distanceTableNDGridBatches(dev_database, DBSIZE, NUMTOTALINDEXES, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs, whichIndexPoints);
 
 	double tend = omp_get_wtime();
 
