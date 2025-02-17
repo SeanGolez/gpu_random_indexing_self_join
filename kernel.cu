@@ -744,8 +744,8 @@ __global__ void kernelPairwiseDatabaseRotation( DTYPE * database, const unsigned
 
 	for( unsigned int i=0; i<NUMPAIRROTATIONS; i++ )
 	{
-		DTYPE dim_0 = database[pointID + dimPair[i * 2]];
-		DTYPE dim_1 = database[pointID + dimPair[i * 2 + 1]];
+		DTYPE dim_0 = database[(N*GPUNUMDIM*whichDatabase) + pointID + dimPair[i * 2]];
+		DTYPE dim_1 = database[(N*GPUNUMDIM*whichDatabase) + pointID + dimPair[i * 2 + 1]];
 
 		DTYPE new_dim_0 = (dim_0 * cos(theta[i])) - (dim_1 * sin(theta[i]));
 		DTYPE new_dim_1 = (dim_0 * sin(theta[i])) + (dim_1 * cos(theta[i]));
