@@ -129,7 +129,7 @@ __global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqu
 // unsigned int * gridCellNDMaskOffsets – an array that stores the offsets into gridCellNDMask of the non-empty cells in each dimension
 // int * pointIDKey, int * pointInDistVal - result set to be sorted as key/value pairs
 
-__global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
+__global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debug2, const unsigned int N,  
 	unsigned int * offset, unsigned int *batchNum, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
 	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned int * cnt, 
 	unsigned int * nNonEmptyCells,  unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets,
@@ -138,7 +138,7 @@ __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debu
 
 unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
 
-if (tid>=*N){
+if (tid>=N){
 	return;
 }
 
