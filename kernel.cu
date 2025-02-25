@@ -76,7 +76,7 @@ __device__ uint64_t getLinearID_nDimensionsGPU(unsigned int * indexes, unsigned 
 
 
 //unique key array on the GPU
-__global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqueKey, int * uniqueKeyPosition, unsigned int * cnt)
+__global__ void kernelUniqueKeys(int * pointIDKey, unsigned long long int * N, int * uniqueKey, int * uniqueKeyPosition, unsigned long long int * cnt)
 {
 	int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
 
@@ -86,7 +86,7 @@ __global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqu
 
 	if (tid==0)
 	{
-		unsigned int idx=atomicAdd(cnt,int(1));
+		unsigned int idx=atomicAdd(cnt,(unsigned long long int)(1));
 		uniqueKey[idx]=pointIDKey[0];
 		uniqueKeyPosition[idx]=0;
 		return;
@@ -97,7 +97,7 @@ __global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqu
 	
 	if (pointIDKey[tid-1]!=pointIDKey[tid])
 	{
-	unsigned int idx=atomicAdd(cnt,int(1));
+	unsigned int idx=atomicAdd(cnt,(unsigned long long int)(1));
 	uniqueKey[idx]=pointIDKey[tid];
 	uniqueKeyPosition[idx]=tid;
 	}
@@ -131,7 +131,7 @@ __global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqu
 
 __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debug2, const unsigned int N,  
 	unsigned int * offset, unsigned int *batchNum, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
-	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned int * cnt, 
+	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned long long int * cnt, 
 	unsigned int * nNonEmptyCells,  unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets,
 	int * pointIDKey, int * pointInDistVal, unsigned int * orderedQueryPntIDs, CTYPE* workCounts)
 {
@@ -304,7 +304,7 @@ bool foundMax=0;
 
 }
 
-__forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* epsilon, DTYPE* point, unsigned int* cnt, int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell) {
+__forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* epsilon, DTYPE* point, unsigned long long int* cnt, int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell) {
 	
 	unsigned int dataIdx=indexLookupArr[k];
 
@@ -364,12 +364,12 @@ __forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, D
         if (sqrt(runningTotalDist)<=(*epsilon)){	
         #endif	
 		        
-          unsigned int idx=atomicAdd(cnt,int(1));
+          unsigned int idx=atomicAdd(cnt,(unsigned long long int)(1));
           pointIDKey[idx]=pointIdx;
           pointInDistVal[idx]=dataIdx;
 
             if(differentCell) {
-              unsigned int idx = atomicAdd(cnt,int(1));
+              unsigned int idx = atomicAdd(cnt,(unsigned long long int)(1));
               pointIDKey[idx]=pointIdx;
               pointInDistVal[idx]=dataIdx;
            }
@@ -378,7 +378,7 @@ __forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, D
 
 
 
-__device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, unsigned int* nNonEmptyCells, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, DTYPE* point, unsigned int* cnt, int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts) {
+__device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, unsigned int* nNonEmptyCells, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, DTYPE* point, unsigned long long int* cnt, int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts) {
 
 
 #if COUNTMETRICS == 1

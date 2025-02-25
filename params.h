@@ -29,7 +29,7 @@
 ///////////////////////
 //Utility
 //used for outputting the neighbortable at the end
-#define PRINTNEIGHBORTABLE 0
+#define PRINTNEIGHBORTABLE 1
 ///////////////////////
 
 
@@ -94,4 +94,7 @@
 						 
 //end batching scheme					
 ///////////////////////
+
+// Number of bytes to allocate for key value pairs in GiB
+#define KEYVALUEMEM 50
 

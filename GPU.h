@@ -33,7 +33,7 @@ void constructNeighborTableKeyValueWithPtrsWithMultipleUpdates(int * pointIDKey,
 //Unicomp requires multiple updates to the neighbortable for a given point
 //This allows updating the neighbortable for the same point
 //WITHOUT VECTORS FOR DATA
-void constructNeighborTableKeyValueWithPtrsWithMultipleUpdatesMultipleDataArrays(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned int * cnt, int * uniqueKeys, int * uniqueKeyPosition, unsigned int numUniqueKeys);
+void constructNeighborTableKeyValueWithPtrsWithMultipleUpdatesMultipleDataArrays(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long int * cnt, int * uniqueKeys, int * uniqueKeyPosition, unsigned long long int numUniqueKeys);
 
 //Unicomp requires multiple updates to the neighbortable for a given point
 //This allows updating the neighbortable for the same point
@@ -43,3 +43,5 @@ void constructNeighborTableKeyValueWithPtrsBatchMaskArray(int * pointIDKey, int 
 //Sort the queries by their workload based on the number of points in the cell
 //From hybrid KNN paper in GPGPU'19 
 void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index);
+
+void bubbleSortByKey(int * keysPtr, int * valsPtr, unsigned long long int size);

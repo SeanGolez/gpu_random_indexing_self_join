@@ -17,6 +17,7 @@
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
 #include <thrust/system/cuda/execution_policy.h> //for streams for thrust (added with Thrust v1.8)
+#include <boost/sort/block_indirect_sort/block_indirect_sort.hpp>
 
 
 //for warming up GPU:
@@ -680,10 +681,10 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	*cnt=0;
 	*/
 
-	unsigned int * dev_cnt; 
+	unsigned long long int * dev_cnt; 
 
 	//allocate on the device
-	gpuErrchk(cudaMallocManaged((void**)&dev_cnt, sizeof(unsigned int)));
+	gpuErrchk(cudaMallocManaged((void**)&dev_cnt, sizeof(unsigned long long int)));
 
 	*dev_cnt = 0;
 
@@ -699,9 +700,12 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 	int * dev_pointIDKey; //key
 	int * dev_pointInDistValue; //value
+
+	size_t keyValElementsSize = ((size_t)(KEYVALUEMEM / 2) * (1024 * 1024 * 1024)) / sizeof(int);
+	printf("\nNumber of allocated key value pairs: %zu", keyValElementsSize);
 	
-	gpuErrchk(cudaMallocManaged((void **)&dev_pointIDKey, sizeof(int)*4294967295));
-	gpuErrchk(cudaMallocManaged((void **)&dev_pointInDistValue, sizeof(int)*4294967295));	
+	gpuErrchk(cudaMallocManaged((void **)&dev_pointIDKey, keyValElementsSize));
+	gpuErrchk(cudaMallocManaged((void **)&dev_pointInDistValue, keyValElementsSize));
 
 	//HOST RESULT ALLOCATION FOR THE GPU TO COPY THE DATA INTO A PINNED MEMORY ALLOCATION
 	//ON THE HOST
@@ -856,6 +860,11 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
 		}
 
+
+		if(keyValElementsSize < *dev_cnt) {
+			cout << "\n\nWARNING: Total result set size exceeds elements allocated for key value pairs.\n" << std::endl;
+		}
+
 		
 
 		
@@ -890,10 +899,30 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		//XXXXXXXXXXXXXXXX
 		//THRUST USING STREAMS REQUIRES THRUST V1.8 
 		//XXXXXXXXXXXXXXXX
+
+		cudaStreamSynchronize(stream);
+
+		/*
+		for( int i=0; i<20; i++ ) {
+			printf("\n%d: %d", dev_pointIDKey[i], dev_pointInDistValue[i]);
+		}
+
+		printf("\nSorting...\n");
+		*/
 		
 		
 		try{
-		thrust::sort_by_key(thrust::cuda::par.on(stream), dev_keys_ptr, dev_keys_ptr + *dev_cnt, dev_data_ptr);
+		// thrust::sort_by_key(thrust::cuda::par.on(stream), dev_pointIDKey, dev_pointIDKey + *dev_cnt, dev_pointInDistValue);
+		// bubbleSortByKey(dev_pointIDKey, dev_pointInDistValue, *dev_cnt);
+		std::vector<std::pair<int, char>> key_value_pairs;
+		for (size_t i = 0; i < *dev_cnt; i++) {
+			key_value_pairs.emplace_back(dev_pointIDKey[i], dev_pointInDistValue[i]);
+		}
+		std::sort(key_value_pairs.begin(), key_value_pairs.end());
+		for (size_t i = 0; i < *dev_cnt; i++) {
+			dev_pointIDKey[i] = key_value_pairs[i].first;
+			dev_pointInDistValue[i] = key_value_pairs[i].second;
+		}
 
 
 		}
@@ -902,6 +931,15 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			std::cerr << "Ran out of memory while sorting, " << std::endl;
 			exit(-1);
 			}
+		
+		
+		cudaStreamSynchronize(stream);
+		
+		/*
+		for( int i=0; i<20; i++ ) {
+			printf("\n%d: %d", dev_pointIDKey[i], dev_pointInDistValue[i]);
+		}
+		*/
 		
 
 		/*
@@ -922,10 +960,10 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		////////////////////////////
 		//New with multiple pointers to data arrays
 		// unsigned int uniqueCnt=0;
-		unsigned int * dev_uniqueCnt; 
+		unsigned long long int * dev_uniqueCnt; 
 		
 		//allocate on the device
-		gpuErrchk(cudaMallocManaged((void**)&dev_uniqueCnt, sizeof(unsigned int)));
+		gpuErrchk(cudaMallocManaged((void**)&dev_uniqueCnt, sizeof(unsigned long long int)));
 
 		//iniitalize the count to 0
 		// gpuErrchk(cudaMemcpyAsync( dev_uniqueCnt, &uniqueCnt, sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
@@ -952,11 +990,12 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		const int TOTALBLOCKS2=ceil((1.0*(*dev_cnt))/(1.0*BLOCKSIZE));	
 		printf("\ntotal blocks: %d",TOTALBLOCKS2);
 
+
 		//execute kernel for uniquing the keys	
 		//0 is shared memory pool
 		kernelUniqueKeys<<< TOTALBLOCKS2, BLOCKSIZE, 0, stream>>>(dev_pointIDKey, dev_cnt, dev_uniqueKey, dev_uniqueKeyPosition, dev_uniqueCnt);
 
-		// cudaStreamSynchronize(stream);
+		cudaStreamSynchronize(stream);
 		
 		cout <<"\n\n UNIQUE KEY KERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
 		if ( cudaSuccess != cudaGetLastError() ){
@@ -968,7 +1007,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		gpuErrchk(cudaMemcpyAsync( &uniqueCnt, dev_uniqueCnt, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] ));
 		cudaStreamSynchronize(stream[tid]);
 		*/
-		printf("\nGPU: unique keys: %u", *dev_uniqueCnt);fflush(stdout);
+		printf("\nGPU: unique keys: %llu", *dev_uniqueCnt);fflush(stdout);
 		
 
 		
@@ -997,8 +1036,9 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		cudaMemcpyAsync(thrust::raw_pointer_cast(uniqueKeyPosition), thrust::raw_pointer_cast(dev_uniqueKeyPosition_ptr), uniqueCnt*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);	
 
 		//need to make sure the data is copied before constructing portion of the neighbor table
-		cudaStreamSynchronize(stream[tid]);
 		*/
+		cudaStreamSynchronize(stream);
+
 
 
 
@@ -1015,7 +1055,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
 
 
-		printf("\nRunning total of total size of result array: %d", *dev_cnt);
+		printf("\nRunning total of total size of result array: %llu", *dev_cnt);
 			
 
 
@@ -1031,7 +1071,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 	
 	
-	printf("\nTOTAL RESULT SET SIZE ON HOST:  %d", *dev_cnt);
+	printf("\nTOTAL RESULT SET SIZE ON HOST:  %llu", *dev_cnt);
 	*totalNeighbors=*dev_cnt;
 
 
@@ -1171,7 +1211,7 @@ void constructNeighborTableKeyValueWithPtrs(int * pointIDKey, int * pointInDistV
 
 
 //Fixing the issue with unicomp requiring multiple updates and overwriting the data
-void constructNeighborTableKeyValueWithPtrsWithMultipleUpdatesMultipleDataArrays(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned int * cnt, int * uniqueKeys, int * uniqueKeyPosition, unsigned int numUniqueKeys)
+void constructNeighborTableKeyValueWithPtrsWithMultipleUpdatesMultipleDataArrays(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long int * cnt, int * uniqueKeys, int * uniqueKeyPosition, unsigned long long int numUniqueKeys)
 {
 
 	omp_set_max_active_levels(3);
@@ -1569,6 +1609,17 @@ thrust::copy(H.begin(), H.end(), D.begin());
 for(int i = 0; i < D.size(); i++) 
 std::cout << " D[" << i << "] = " << D[i]; 
 return;
+}
+
+
+void bubbleSortByKey(int * keysPtr, int * valsPtr, unsigned long long int size) {
+    for (int i = 0; i < size - 1; i++) {
+        for (int j = 0; j < size - i - 1; j++) {
+            if (keysPtr[j] > keysPtr[j + 1])
+                swap(keysPtr[j], keysPtr[j + 1]);
+				swap(valsPtr[j], valsPtr[j + 1]);
+        }
+    }
 }
 
 
