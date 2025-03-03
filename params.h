@@ -29,7 +29,7 @@
 ///////////////////////
 //Utility
 //used for outputting the neighbortable at the end
-#define PRINTNEIGHBORTABLE 1
+#define PRINTNEIGHBORTABLE 0
 ///////////////////////
 
 
@@ -96,5 +96,5 @@
 ///////////////////////
 
 // Number of bytes to allocate for key value pairs in GiB
-#define KEYVALUEMEM 50
+#define KEYVALUEMEM 100
 

@@ -82,7 +82,7 @@ __global__ void kernelUniqueKeys(int * pointIDKey, unsigned long long int * N, i
 
 	if (tid>=*N){
 		return;
-	}	
+	}
 
 	if (tid==0)
 	{
@@ -136,12 +136,16 @@ __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debu
 	int * pointIDKey, int * pointInDistVal, unsigned int * orderedQueryPntIDs, CTYPE* workCounts)
 {
 
-unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
+unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE);
+/*
+if (threadIdx.x == 0) {
+    printf("%d: Current sum: %llu\n", blockIdx.x, *cnt);
+}
+*/
 
 if (tid>=N){
 	return;
 }
-
 
 //If reordering the queries by the amount of work
 #if QUERYREORDER==1
@@ -363,13 +367,12 @@ __forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, D
         #if ILP==0
         if (sqrt(runningTotalDist)<=(*epsilon)){	
         #endif	
-		        
-          unsigned int idx=atomicAdd(cnt,(unsigned long long int)(1));
+          unsigned long long int idx=atomicAdd(cnt,1ULL);
           pointIDKey[idx]=pointIdx;
           pointInDistVal[idx]=dataIdx;
 
             if(differentCell) {
-              unsigned int idx = atomicAdd(cnt,(unsigned long long int)(1));
+              unsigned long long int idx = atomicAdd(cnt,1ULL);
               pointIDKey[idx]=pointIdx;
               pointInDistVal[idx]=dataIdx;
            }

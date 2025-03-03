@@ -546,10 +546,12 @@ void printNeighborTable(unsigned int databaseSize, struct neighborTableLookup * 
 
 	char fname[]="DSSJ_out.txt";
 	ofstream DSSJ_out;
-	DSSJ_out.open(fname,ios::out);	
+	DSSJ_out.open(fname,ios::out);
 
 	printf("\n\nOutputting neighbors to: %s\n", fname);
 	DSSJ_out<<"#data point (line is the point id), neighbor point ids\n";
+
+
 
 	for (int i=0; i<databaseSize; i++){
 		//sort to have increasing point IDs

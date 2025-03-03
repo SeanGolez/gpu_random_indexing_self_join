@@ -48,6 +48,14 @@ struct keyData{
 };
 
 
+
+
+struct keyValPair{
+	int key;
+	int val;
+};
+
+
 //need to pass in the neighbortable thats an array of the dataset size.
 //carry around a pointer to the array that has the points within epsilon 
 
