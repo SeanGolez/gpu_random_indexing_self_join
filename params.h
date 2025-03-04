@@ -96,5 +96,5 @@
 ///////////////////////
 
 // Number of bytes to allocate for key value pairs in GiB
-#define KEYVALUEMEM 100
+#define KEYVALUEMEM 210
 

@@ -51,8 +51,8 @@ struct keyData{
 
 
 struct keyValPair{
-	int key;
-	int val;
+	unsigned int key;
+	unsigned int val;
 };
 
 

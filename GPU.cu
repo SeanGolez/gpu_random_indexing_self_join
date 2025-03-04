@@ -705,14 +705,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//ALLOCATE MEMORY FOR THE RESULT SET USING THE BATCH ESTIMATOR
 	///////////////////////////////////
 
-	int * dev_pointIDKey; //key
-	int * dev_pointInDistValue; //value
+	unsigned int * dev_pointIDKey; //key
+	unsigned int * dev_pointInDistValue; //value
 
-	size_t keyValElementsSize = ((size_t)(KEYVALUEMEM / 2) * (1024 * 1024 * 1024)) / sizeof(unsigned long long int);
+	size_t keyValElementsSize = ((size_t)(KEYVALUEMEM / 2) * (1024 * 1024 * 1024)) / sizeof(unsigned int);
 	printf("\nNumber of allocated key value pairs: %zu", keyValElementsSize);
 	
-	gpuErrchk(cudaMallocManaged((void **)&dev_pointIDKey, keyValElementsSize * sizeof(unsigned long long int)));
-	gpuErrchk(cudaMallocManaged((void **)&dev_pointInDistValue, keyValElementsSize * sizeof(unsigned long long int)));
+	gpuErrchk(cudaMallocManaged((void **)&dev_pointIDKey, keyValElementsSize * sizeof(unsigned int)));
+	gpuErrchk(cudaMallocManaged((void **)&dev_pointInDistValue, keyValElementsSize * sizeof(unsigned int)));
 
 	//HOST RESULT ALLOCATION FOR THE GPU TO COPY THE DATA INTO A PINNED MEMORY ALLOCATION
 	//ON THE HOST
@@ -924,6 +924,10 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		
 		cudaStreamSynchronize(stream);
 		*/
+
+		std::cout << "Press Enter to continue...";
+		std::cin.get();  // Waits for the user to press Enter
+		std::cout << "Continuing...\n";
 		
 		
 		// gnu parallel sort by key 
@@ -933,6 +937,9 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			keyValPairs[i].key = dev_pointIDKey[i];
 			keyValPairs[i].val = dev_pointInDistValue[i];
 		}
+		// This gets killed here for large result set size
+		cudaFree(dev_pointIDKey);
+		cudaFree(dev_pointInDistValue);
 
 		__gnu_parallel::sort(keyValPairs, keyValPairs+*dev_cnt, compareKeyValPairs);
 		
@@ -1135,8 +1142,6 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//free data related to the individual streams for each batch
 	// for (int i=0; i<GPUSTREAMS; i++){
 		//free the data on the device
-	cudaFree(dev_pointIDKey);
-	cudaFree(dev_pointInDistValue);
 	/*
 		//free on the host
 		cudaFreeHost(pointIDKey[i]);
