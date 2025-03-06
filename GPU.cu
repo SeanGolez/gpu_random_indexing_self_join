@@ -18,7 +18,6 @@
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
 #include <thrust/system/cuda/execution_policy.h> //for streams for thrust (added with Thrust v1.8)
-#include <boost/sort/block_indirect_sort/block_indirect_sort.hpp>
 
 
 //for warming up GPU:
@@ -275,7 +274,7 @@ return estimatedTotalSizeWithAlpha;
 
 }
 
-void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, struct grid * index, 
+double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, struct grid * index, 
 	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts)
@@ -871,7 +870,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 		cudaDeviceSynchronize();
 
-		printf("\nRunning total of total size of result array: %llu", *dev_cnt);
+		fprintf(stderr,"\nTotal of total size of result array: %llu", *dev_cnt);
 
 		if(keyValElementsSize < *dev_cnt) {
 			cout << "\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n" << std::endl;
@@ -924,10 +923,6 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		
 		cudaStreamSynchronize(stream);
 		*/
-
-		std::cout << "Press Enter to continue...";
-		std::cin.get();  // Waits for the user to press Enter
-		std::cout << "Continuing...\n";
 		
 		
 		// gnu parallel sort by key 
@@ -940,12 +935,16 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		// This gets killed here for large result set size
 		cudaFree(dev_pointIDKey);
 		cudaFree(dev_pointInDistValue);
-
+		fprintf(stderr, "\nSorting pairs...");
+		double tstart_sort = omp_get_wtime();
 		__gnu_parallel::sort(keyValPairs, keyValPairs+*dev_cnt, compareKeyValPairs);
+		double tend_sort = omp_get_wtime();
+		printf("\nSort time: %f", (tend_sort - tstart_sort));
 		
 		
 		/*
 		//thrust with streams into individual buffers for each batch
+		
 		
 		cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid]*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
 		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid]*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);	
@@ -1156,6 +1155,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	printf("\nTime freeing memory: %f", tFreeEnd - tFreeStart);
 	// }
 	cout<<"\n** last error at end of fn batches (could be from freeing memory): "<<cudaGetLastError();
+
+	return (tend_sort - tstart_sort);
 
 }
 
