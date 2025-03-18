@@ -847,8 +847,6 @@ dev_completedArray, dev_countNeighbors);
 	}
 
 	#if PROBEANDSORT==0
-	double tstart_sort = omp_get_wtime();
-	fprintf(stderr, "\nSorting pairs...");
 	// gnu parallel sort by key 
 	keyValPair * sortedKeyValPairs = new keyValPair[*dev_cnt];
 	#pragma omp parallel for num_threads(8)
@@ -856,13 +854,19 @@ dev_completedArray, dev_countNeighbors);
 		sortedKeyValPairs[i].key = dev_pointIDKey[i];
 		sortedKeyValPairs[i].val = dev_pointInDistValue[i];
 	}
+
 	// This gets killed here for large result set size
 	cudaFree(dev_pointIDKey);
 	cudaFree(dev_pointInDistValue);
+
+	double tstart_sort = omp_get_wtime();
+	fprintf(stderr, "\nSorting pairs...");
 	__gnu_parallel::sort(sortedKeyValPairs, sortedKeyValPairs+*dev_cnt, compareKeyValPairs);
 	double tend_sort = omp_get_wtime();
 	printf("\nSort time: %f", (tend_sort - tstart_sort));
-	#endif
+
+
+	
 
 
 	double tableconstuctstart=omp_get_wtime();
@@ -877,6 +881,7 @@ dev_completedArray, dev_countNeighbors);
 	double tableconstuctend=omp_get_wtime();	
 	
 	printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
+	#endif
 
 
 #if COUNTMETRICS == 1
@@ -961,7 +966,9 @@ dev_completedArray, dev_countNeighbors);
 		cudaFreeHost(pointInDistValue[i]);
 	}
 	*/
+#if PROBEANDSORT!=-1
 	delete[] sortedKeyValPairs;
+#endif
 
 
 	double tFreeEnd=omp_get_wtime();
