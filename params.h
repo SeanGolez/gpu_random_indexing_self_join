@@ -57,7 +57,7 @@
 #define SHORTCIRCUIT 1
 
 //Reorder the query points by work
-#define QUERYREORDER 1
+#define QUERYREORDER 0 //note: Keep this off for probe-and-sort
 
 //End optimizations
 ///////////////////////
@@ -98,3 +98,20 @@
 // Number of bytes to allocate for key value pairs in GiB
 #define KEYVALUEMEM 210
 
+//probe-and-sort
+#define PROBEANDSORT 1 //0 sort everything in unified memory at the end
+					   //1 do probe-and-sort
+					   //-1 no sorting at all (as a baseline)
+
+#define SLEEPSEC 2 //Number of seconds to wait until probing the count produced on the GPU
+#define FRACTIONTHREADSCOMPLETE 0.05 //this is used as a threshold to determine when to sort on the CPU
+//end probe-and-sort
+
+
+//////////////////////////
+//parallel CPU parameters for OpenMP
+#define NCOPYTHREADS 2 //number of threads for parallel scan operations: e.g., copies on the CPU and reductions
+					//The number of threads should be obtained from stream benchmarks or similar.
+
+//end parallel CPU parameters for OpenMP
+//////////////////////////

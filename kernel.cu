@@ -133,7 +133,8 @@ __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debu
 	unsigned int * offset, unsigned int *batchNum, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
 	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned long long int * cnt, 
 	unsigned int * nNonEmptyCells,  unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets,
-	unsigned int * pointIDKey, unsigned int * pointInDistVal, unsigned int * orderedQueryPntIDs, CTYPE* workCounts)
+	unsigned int * pointIDKey, unsigned int * pointInDistVal, unsigned int * orderedQueryPntIDs, CTYPE* workCounts,
+	bool * completedArray, unsigned int * countNeighbor)
 {
 
 unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE);
@@ -146,6 +147,8 @@ if (threadIdx.x == 0) {
 if (tid>=N){
 	return;
 }
+
+unsigned int localCnt = 0;
 
 //If reordering the queries by the amount of work
 #if QUERYREORDER==1
@@ -301,14 +304,16 @@ bool foundMax=0;
 	for (int x=0; x<NUMINDEXEDDIM; x++){
 	indexes[x]=loopRng[x];	
 	}
-		evaluateCell(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, index, indexLookupArr, point, cnt, pointIDKey, pointInDistVal, pointIdx, false, nDCellIDs, workCounts);
+		evaluateCell(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, index, indexLookupArr, point, cnt, pointIDKey, pointInDistVal, pointIdx, false, nDCellIDs, workCounts, &localCnt);
 	
 	} //end loop body
 #endif
 
+	countNeighbor[tid] = localCnt;
+	completedArray[tid] = 1;
 }
 
-__forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* epsilon, DTYPE* point, unsigned long long int* cnt, unsigned int* pointIDKey, unsigned int* pointInDistVal, int pointIdx, bool differentCell) {
+__forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* epsilon, DTYPE* point, unsigned long long int* cnt, unsigned int* pointIDKey, unsigned int* pointInDistVal, int pointIdx, bool differentCell, unsigned int * localCnt) {
 	
 	unsigned int dataIdx=indexLookupArr[k];
 
@@ -366,12 +371,14 @@ __forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, D
         #endif
         #if ILP==0
         if (sqrt(runningTotalDist)<=(*epsilon)){	
-        #endif	
+        #endif
+		  (*localCnt) += 1;
           unsigned long long int idx=atomicAdd(cnt,1ULL);
           pointIDKey[idx]=pointIdx;
           pointInDistVal[idx]=dataIdx;
 
             if(differentCell) {
+			  (*localCnt) += 1;
               unsigned long long int idx = atomicAdd(cnt,1ULL);
               pointIDKey[idx]=pointIdx;
               pointInDistVal[idx]=dataIdx;
@@ -381,7 +388,7 @@ __forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, D
 
 
 
-__device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, unsigned int* nNonEmptyCells, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, DTYPE* point, unsigned long long int* cnt, unsigned int* pointIDKey, unsigned int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts) {
+__device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, unsigned int* nNonEmptyCells, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, DTYPE* point, unsigned long long int* cnt, unsigned int* pointIDKey, unsigned int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts, unsigned int * localCnt) {
 
 
 #if COUNTMETRICS == 1
@@ -472,7 +479,7 @@ __device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct
 // Brute force method if SORTED != 1
 #else
 	for (int k=index[GridIndex].indexmin; k<=index[GridIndex].indexmax; k++){
-		evalPoint(indexLookupArr, k, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
+		evalPoint(indexLookupArr, k, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell, localCnt);
 #if COUNTMETRICS == 1
 			atomicAdd(&workCounts[0],1);
 #endif

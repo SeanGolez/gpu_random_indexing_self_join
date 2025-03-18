@@ -5,7 +5,7 @@
 
 void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPoints, DTYPE* epsilon, struct table * neighborTable, unsigned long long int * totalNeighbors);
 
-double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, struct grid * index, 
+void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, struct grid * index, 
 	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts);
@@ -48,3 +48,24 @@ void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridC
 void bubbleSortByKey(int * keysPtr, int * valsPtr, unsigned long long int size);
 
 void hostUniqueKeys(keyValPair * keyValPairs, unsigned long long int * size, keyValPair * uniqueKeyPosPairs, unsigned long long int * uniqueCnt);
+
+
+// probe-and-sort functions
+void probeAndSort(
+	unsigned int * dev_pointIDKey,
+	unsigned int * dev_pointInDistValue,
+	keyValPair * sortedKeyValPairs,
+	unsigned long long int * cnt,
+	bool * completedArray,
+	unsigned int *	countNeighbors,
+	const unsigned long long int maxUnsortedNELEMS, 
+	const unsigned int numElemsCompletedArray 
+	);
+
+bool checkQueriesComplete(bool * completedArray, unsigned int offSetComplete, const unsigned int numElemsCompletedArray, const unsigned int NCOMPLETETHRESH);
+
+uint64_t computeElemsToSort(unsigned int * countNeighbors, unsigned int offSetComplete, const unsigned int numElemsCompletedArray, const unsigned int NCOMPLETETHRESH);
+
+uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsigned int * dev_pointIDKey,
+	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,
+	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound);

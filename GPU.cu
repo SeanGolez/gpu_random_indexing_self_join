@@ -274,7 +274,7 @@ return estimatedTotalSizeWithAlpha;
 
 }
 
-double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, struct grid * index, 
+void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, struct grid * index, 
 	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts)
@@ -753,6 +753,17 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 	////////////////////////////////
 	*/
 	
+	//Each thread that processes a "query" point will set this to be true if it has completed
+	bool * dev_completedArray;
+	gpuErrchk(cudaMallocManaged(&dev_completedArray, sizeof(bool)*(*DBSIZE)));
+	//init to 0
+	memset(dev_completedArray, 0, sizeof(bool)*(*DBSIZE));
+
+	//counters for all query points (the number of points within epsilon of it)
+	unsigned int * dev_countNeighbors;
+	gpuErrchk(cudaMallocManaged(&dev_countNeighbors, sizeof(unsigned int)*(*DBSIZE)));
+	//init to 0
+	memset(dev_countNeighbors, 0, sizeof(unsigned int)*(*DBSIZE));
 	
 
 	/////////////////////////////////
@@ -784,290 +795,93 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 		gpuErrchk(cudaMemcpy(dev_workCounts, workCounts, 2*sizeof(CTYPE), cudaMemcpyHostToDevice ));
 #endif
 
-		/*
-	unsigned int batchSize=(*DBSIZE)/numBatches;
-	unsigned int batchesThatHaveOneMore=(*DBSIZE)-(batchSize*numBatches); //batch number 0- < this value have one more
-	printf("\nBatches that have one more GPU thread: %u batchSize(N): %u, \n",batchesThatHaveOneMore,batchSize);
 
-	uint64_t totalResultsLoop=0;
+	//the offset for batching, which keeps track of where to start processing at each batch
+	unsigned int * batchOffset; //for the strided
+	batchOffset = (unsigned int*)malloc(sizeof(unsigned int));
+	*batchOffset = 1;
+	unsigned int * dev_offset;
+	gpuErrchk(cudaMalloc((void**)&dev_offset, sizeof(unsigned int)));
+	gpuErrchk(cudaMemcpy( dev_offset, batchOffset, sizeof(unsigned int), cudaMemcpyHostToDevice ));
 
-
-
-		//FOR LOOP OVER THE NUMBER OF BATCHES STARTS HERE
-		//i=0...numBatches
-		#pragma omp parallel for schedule(static,1) reduction(+:totalResultsLoop) num_threads(GPUSTREAMS)
-		for (int i=0; i<numBatches; i++)
-		// for (int i=0; i<1; i++)
-		{
-			
-		int tid=omp_get_thread_num();
-		
-		printf("\ntid: %d, starting iteration: %d",tid,i);
-
-		//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
-		//AS ONE GPU THREAD PROCESSES A SINGLE POINT
-		
-		if (i<batchesThatHaveOneMore)
-		{
-			N[tid]=batchSize+1;	
-			printf("\nN (GPU threads): %d, tid: %d",N[tid], tid);
-		}
-		else
-		{
-			N[tid]=batchSize;	
-			printf("\nN (1 less): %d tid: %d",N[tid], tid);
-		}
-
-		//set relevant parameters for the batched execution that get reset
-		
-
-		//copy N to device 
-		//N IS THE NUMBER OF THREADS
-		gpuErrchk(cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
+	//the batch number for batching with strided
+	unsigned int * batchNumber;
+	batchNumber = (unsigned int*)malloc(sizeof(unsigned int));
+	*batchNumber = 0;
+	unsigned int * dev_batchNumber;
+	gpuErrchk(cudaMalloc((void**)&dev_batchNumber, sizeof(unsigned int)));
+	gpuErrchk(cudaMemcpy( dev_batchNumber, batchNumber, sizeof(unsigned int), cudaMemcpyHostToDevice ));
 
 
-		//the batched result set size (reset to 0):
-		cnt[tid]=0;
-		gpuErrchk(cudaMemcpyAsync( &dev_cnt[tid], &cnt[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
-		*/
+	const int TOTALBLOCKS=ceil((1.0*(*DBSIZE))/(1.0*BLOCKSIZE));	
+	printf("\ntotal blocks: %d",TOTALBLOCKS);
 
-		//the offset for batching, which keeps track of where to start processing at each batch
-		unsigned int * batchOffset; //for the strided
-		batchOffset = (unsigned int*)malloc(sizeof(unsigned int));
-		*batchOffset = 1;
-		unsigned int * dev_offset;
-		gpuErrchk(cudaMalloc((void**)&dev_offset, sizeof(unsigned int)));
-		gpuErrchk(cudaMemcpy( dev_offset, batchOffset, sizeof(unsigned int), cudaMemcpyHostToDevice ));
+	cudaDeviceSynchronize();
 
-		//the batch number for batching with strided
-		unsigned int * batchNumber;
-		batchNumber = (unsigned int*)malloc(sizeof(unsigned int));
-		*batchNumber = 0;
-		unsigned int * dev_batchNumber;
-		gpuErrchk(cudaMalloc((void**)&dev_batchNumber, sizeof(unsigned int)));
-		gpuErrchk(cudaMemcpy( dev_batchNumber, batchNumber, sizeof(unsigned int), cudaMemcpyHostToDevice ));
+	//execute kernel	
+	//0 is shared memory pool
+	kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream>>>(dev_debug1, dev_debug2, *DBSIZE, 
+dev_offset, dev_batchNumber, dev_database, dev_epsilon, dev_grid, dev_indexLookupArr, 
+dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt, dev_nNonEmptyCells, dev_gridCellNDMask, 
+dev_gridCellNDMaskOffsets, dev_pointIDKey, dev_pointInDistValue, dev_orderedQueryPntIDs, dev_workCounts,
+dev_completedArray, dev_countNeighbors);
 
+	// errCode=cudaDeviceSynchronize();
+	// cout <<"\n\nError from device synchronize: "<<errCode;
 
-		const int TOTALBLOCKS=ceil((1.0*(*DBSIZE))/(1.0*BLOCKSIZE));	
-		printf("\ntotal blocks: %d",TOTALBLOCKS);
+	cout <<"\n\nKERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
+	if ( cudaSuccess != cudaGetLastError() ){
+		cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
+	}
+	
+	#if PROBEANDSORT==1
+	keyValPair * sortedKeyValPairs = (keyValPair *)malloc(sizeof(keyValPair)*keyValElementsSize);
+	probeAndSort(dev_pointIDKey, dev_pointInDistValue, sortedKeyValPairs, dev_cnt, dev_completedArray, dev_countNeighbors, keyValElementsSize, *DBSIZE);
+	#endif
 
-		cudaDeviceSynchronize();
+	cudaDeviceSynchronize();
+	fprintf(stderr,"\nTotal of total size of result array: %llu", *dev_cnt);
+	printf("\n[After synchronization] Num elems generated in array (Fraction: %f): %llu", *dev_cnt*1.0/keyValElementsSize*1.0, *dev_cnt);
+	if(keyValElementsSize < *dev_cnt) {
+		cout << "\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n" << endl;
+	}
 
-		//execute kernel	
-		//0 is shared memory pool
-		kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream>>>(dev_debug1, dev_debug2, *DBSIZE, 
-	dev_offset, dev_batchNumber, dev_database, dev_epsilon, dev_grid, dev_indexLookupArr, 
-	dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt, dev_nNonEmptyCells, dev_gridCellNDMask, 
-	dev_gridCellNDMaskOffsets, dev_pointIDKey, dev_pointInDistValue, dev_orderedQueryPntIDs, dev_workCounts);
-
-		// errCode=cudaDeviceSynchronize();
-		// cout <<"\n\nError from device synchronize: "<<errCode;
-
-		cout <<"\n\nKERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
-		if ( cudaSuccess != cudaGetLastError() ){
-			cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
-		}
-
-		cudaDeviceSynchronize();
-
-		fprintf(stderr,"\nTotal of total size of result array: %llu", *dev_cnt);
-
-		if(keyValElementsSize < *dev_cnt) {
-			cout << "\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n" << std::endl;
-		}
-		
-		// find the size of the number of results
-		
-		/*
-		errCode=cudaMemcpyAsync( &cnt[tid], &dev_cnt[tid], sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] );
-		if(errCode != cudaSuccess) {
-		cout << "\nError: getting cnt from GPU Got error with code " << errCode << endl; 
-		}
-		else{
-			// printf("\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);
-			fprintf(stderr,"\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);
-		}
-
-		//add the batched result set size to the total count
-		totalResultsLoop+=cnt[tid];
-		*/
+	#if PROBEANDSORT==0
+	double tstart_sort = omp_get_wtime();
+	fprintf(stderr, "\nSorting pairs...");
+	// gnu parallel sort by key 
+	keyValPair * sortedKeyValPairs = new keyValPair[*dev_cnt];
+	#pragma omp parallel for num_threads(8)
+	for( unsigned long long int i=0; i < *dev_cnt; i++ ) {
+		sortedKeyValPairs[i].key = dev_pointIDKey[i];
+		sortedKeyValPairs[i].val = dev_pointInDistValue[i];
+	}
+	// This gets killed here for large result set size
+	cudaFree(dev_pointIDKey);
+	cudaFree(dev_pointInDistValue);
+	__gnu_parallel::sort(sortedKeyValPairs, sortedKeyValPairs+*dev_cnt, compareKeyValPairs);
+	double tend_sort = omp_get_wtime();
+	printf("\nSort time: %f", (tend_sort - tstart_sort));
+	#endif
 
 
-
-		////////////////////////////////////
-		//SORT THE TABLE DATA ON THE GPU
-		//THERE IS NO ORDERING BETWEEN EACH POINT AND THE ONES THAT IT'S WITHIN THE DISTANCE OF
-		////////////////////////////////////
-
-		//sort by key with the data already on the device:
-		//wrap raw pointer with a device_ptr to use with Thrust functions
-		// thrust::device_ptr<int> dev_keys_ptr(dev_pointIDKey);
-		// thrust::device_ptr<int> dev_data_ptr(dev_pointInDistValue);
-
-		//XXXXXXXXXXXXXXXX
-		//THRUST USING STREAMS REQUIRES THRUST V1.8 
-		//XXXXXXXXXXXXXXXX
-		
-		/*
-		try{
-		thrust::sort_by_key(thrust::cuda::par.on(stream), dev_pointIDKey, dev_pointIDKey + *dev_cnt, dev_pointInDistValue);
+	double tableconstuctstart=omp_get_wtime();
+	//set the number of neighbors in the pointer struct:
+	tmpStruct.sizeOfDataArr=*dev_cnt;    
+	tmpStruct.dataPtr=new int[*dev_cnt]; // NOTE: Do not frees this from memory until program is finished
 
 
-		}
-		catch(std::bad_alloc &e)
-			{
-			std::cerr << "Ran out of memory while sorting, " << std::endl;
-			exit(-1);
-			}
-		
-		
-		cudaStreamSynchronize(stream);
-		*/
-		
-		
-		// gnu parallel sort by key 
-		keyValPair * keyValPairs = new keyValPair[*dev_cnt];
-		#pragma omp parallel for num_threads(8)
-		for( unsigned long long int i=0; i < *dev_cnt; i++ ) {
-			keyValPairs[i].key = dev_pointIDKey[i];
-			keyValPairs[i].val = dev_pointInDistValue[i];
-		}
-		// This gets killed here for large result set size
-		cudaFree(dev_pointIDKey);
-		cudaFree(dev_pointInDistValue);
-		fprintf(stderr, "\nSorting pairs...");
-		double tstart_sort = omp_get_wtime();
-		__gnu_parallel::sort(keyValPairs, keyValPairs+*dev_cnt, compareKeyValPairs);
-		double tend_sort = omp_get_wtime();
-		printf("\nSort time: %f", (tend_sort - tstart_sort));
-		
-		
-		/*
-		//thrust with streams into individual buffers for each batch
-		
-		
-		cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid]*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
-		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid]*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);	
-
-		//need to make sure the data is copied before constructing portion of the neighbor table
-		cudaStreamSynchronize(stream[tid]);
-		*/
-
-		double tableconstuctstart=omp_get_wtime();
-		//set the number of neighbors in the pointer struct:
-		tmpStruct.sizeOfDataArr=*dev_cnt;    
-		tmpStruct.dataPtr=new int[*dev_cnt]; // NOTE: Do not frees this from memory until program is finished
-
-		/*
-		////////////////////////////
-		//New with multiple pointers to data arrays
-		unsigned long long int uniqueCnt=0;
-		keyValPair * uniqueKeyPosPairs = new keyValPair[*dev_cnt];
-
-		unsigned long long int * dev_uniqueCnt; 
-		
-		//allocate on the device
-		gpuErrchk(cudaMallocManaged((void**)&dev_uniqueCnt, sizeof(unsigned long long int)));
-
-		//iniitalize the count to 0
-		// gpuErrchk(cudaMemcpyAsync( dev_uniqueCnt, &uniqueCnt, sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
-			
-		//host side result
-		int * uniqueKey=new int[cnt[tid]];
-		int * uniqueKeyPosition=new int[cnt[tid]];
-		int * dev_uniqueKey;
-		int * dev_uniqueKeyPosition;
-		
-
-		
-		
-		//allocate memory on device:
-		
-		gpuErrchk(cudaMallocManaged( (void**)&dev_uniqueKey, sizeof(int)*(*dev_cnt)));
-
-		
-		gpuErrchk(cudaMallocManaged( (void**)&dev_uniqueKeyPosition, sizeof(int)*(*dev_cnt)));
-		
-
-		const int TOTALBLOCKS2=ceil((1.0*(*dev_cnt))/(1.0*BLOCKSIZE));	
-		printf("\ntotal blocks: %d",TOTALBLOCKS2);
-
-
-		//execute kernel for uniquing the keys	
-		//0 is shared memory pool
-		kernelUniqueKeys<<< TOTALBLOCKS2, BLOCKSIZE, 0, stream>>>(dev_pointIDKey, dev_cnt, dev_uniqueKey, dev_uniqueKeyPosition, dev_uniqueCnt);
-
-		cudaStreamSynchronize(stream);
-		
-		cout <<"\n\n UNIQUE KEY KERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
-		if ( cudaSuccess != cudaGetLastError() ){
-			cout <<"\n\nERROR IN UNIQUE KEY KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
-		}
-		//get the number of unique keys
-
-		gpuErrchk(cudaMemcpyAsync( &uniqueCnt, dev_uniqueCnt, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] ));
-		cudaStreamSynchronize(stream[tid]);
-		
-
-		
-		printf("\nGPU: unique keys: %llu", uniqueCnt);fflush(stdout);
-		*/
-		
-		
-
-		/*
-		//sort by key with the data already on the device:
-		//wrap raw pointer with a device_ptr to use with Thrust functions
-		thrust::device_ptr<int> dev_uniqueKey_ptr(dev_uniqueKey);
-		thrust::device_ptr<int> dev_uniqueKeyPosition_ptr(dev_uniqueKeyPosition);
-
-		try{
-		thrust::sort_by_key(thrust::cuda::par.on(stream), dev_uniqueKey_ptr, dev_uniqueKey_ptr + *dev_uniqueCnt, dev_uniqueKeyPosition_ptr);
-		}
-		catch(std::bad_alloc &e)
-			{
-			std::cerr << "Ran out of memory while sorting, " << std::endl;
-			exit(-1);
-			}
-
-
-
-		//thrust with streams into individual buffers for each batch
-		cudaMemcpyAsync(thrust::raw_pointer_cast(uniqueKey), thrust::raw_pointer_cast(dev_uniqueKey_ptr), uniqueCnt*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
-		cudaMemcpyAsync(thrust::raw_pointer_cast(uniqueKeyPosition), thrust::raw_pointer_cast(dev_uniqueKeyPosition_ptr), uniqueCnt*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);	
-
-		//need to make sure the data is copied before constructing portion of the neighbor table
-		
-		cudaStreamSynchronize(stream);
-		*/
-
-
-
-
-		// constructNeighborTableKeyValueWithPtrsWithMultipleUpdatesMultipleDataArrays(dev_pointIDKey, dev_pointInDistValue, neighborTable, tmpStruct.dataPtr, dev_cnt, dev_uniqueKey, dev_uniqueKeyPosition, *dev_uniqueCnt);
-
-		// cudaFree(dev_uniqueCnt);
-		// cudaFree(dev_uniqueKey);
-		// cudaFree(dev_uniqueKeyPosition);
-		// cudaStreamSynchronize(stream);
-
-		constructNeighborTableKeyValueWithPtrs(keyValPairs, neighborTable, tmpStruct.dataPtr, dev_cnt);
-		
-		
-		double tableconstuctend=omp_get_wtime();	
-		
-		printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
-			
-
-
-		
-
-		//} //END LOOP OVER THE GPU BATCHES
+	constructNeighborTableKeyValueWithPtrs(sortedKeyValPairs, neighborTable, tmpStruct.dataPtr, dev_cnt);
+	
+	
+	double tableconstuctend=omp_get_wtime();	
+	
+	printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
 
 
 #if COUNTMETRICS == 1
-        cudaMemcpy(workCounts, dev_workCounts, 2*sizeof(CTYPE), cudaMemcpyDeviceToHost );
-        printf("\nPoint comparisons: %llu, Cell evaluations: %llu", workCounts[0],workCounts[1]);
+	cudaMemcpy(workCounts, dev_workCounts, 2*sizeof(CTYPE), cudaMemcpyDeviceToHost );
+	printf("\nPoint comparisons: %llu, Cell evaluations: %llu", workCounts[0],workCounts[1]);
 #endif
 
 	
@@ -1147,7 +961,7 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 		cudaFreeHost(pointInDistValue[i]);
 	}
 	*/
-	delete[] keyValPairs;
+	delete[] sortedKeyValPairs;
 
 
 	double tFreeEnd=omp_get_wtime();
@@ -1155,8 +969,6 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 	printf("\nTime freeing memory: %f", tFreeEnd - tFreeStart);
 	// }
 	cout<<"\n** last error at end of fn batches (could be from freeing memory): "<<cudaGetLastError();
-
-	return (tend_sort - tstart_sort);
 
 }
 
@@ -1685,3 +1497,251 @@ void hostUniqueKeys(keyValPair * keyValPairs, unsigned long long int * size, key
 	}
 }
 
+
+void probeAndSort(
+	unsigned int * dev_pointIDKey,
+	unsigned int * dev_pointInDistValue,
+	keyValPair * sortedKeyValPairs,
+	unsigned long long int * cnt,
+	bool * completedArray,
+	unsigned int *	countNeighbors,
+	const unsigned long long int maxUnsortedNELEMS, 
+	const unsigned int numElemsCompletedArray 
+	)
+{
+
+	//offset into output sorted buffer
+	uint64_t idxOffset = 0;	
+	//For clarity bufferToSort is just a pointer to the output array,
+	//so we don't allocate unneeded memory and perform unnecessary memory copies.
+	//But bufferToSort points to the location that needs to be sorted next
+	keyValPair * bufferToSort = &sortedKeyValPairs[idxOffset];
+
+	//Should only probe-and-sort if the size of the array 
+	//is using significant GPU memory
+	// uint64_t thresholdElems = 1000;
+
+	//NCOMPLETETHRESH should be a multiple of BLOCKSIZE
+	unsigned int NCOMPLETETHRESH = BLOCKSIZE*((FRACTIONTHREADSCOMPLETE*numElemsCompletedArray*1.0)/(BLOCKSIZE*1.0));
+	printf("\nNCOMPLETETHRESH: %u", NCOMPLETETHRESH);
+	// unsigned int NCOMPLETETHRESH = BLOCKSIZE*1000;
+	unsigned int offSetComplete = 0;
+
+	//Range of the "point ids" to read from the unsorted array:
+	// unsigned int rangeMin = offSetComplete;
+	// unsigned int rangeMax = min(numElemsCompletedArray, offSetComplete+NCOMPLETETHRESH);
+	unsigned int rangeMin = offSetComplete;
+	unsigned int rangeMax = min(numElemsCompletedArray, offSetComplete+NCOMPLETETHRESH);
+
+
+	uint64_t cntOutputBuffer = 0;
+
+	uint64_t totalSortedElems = 0;
+
+	//used to short circuit the scan when copying elements from
+	//unsorted buffer to a temp buffer for sorting
+	uint64_t elemsLowerBound = 0;
+
+	//probe until we can sort some of the elements
+	bool ret = 0;
+	unsigned long long int localCnt=0;
+	// while(ret==0 && (*cnt)<maxUnsortedNELEMS)
+	// while((*cnt)<maxUnsortedNELEMS)
+	// while((*cnt)<maxUnsortedNELEMS)
+
+	unsigned int retTrueIteration = 0;
+
+	while(totalSortedElems<maxUnsortedNELEMS && localCnt<maxUnsortedNELEMS && offSetComplete<numElemsCompletedArray)
+	{
+
+		bufferToSort = &sortedKeyValPairs[idxOffset];
+
+		//sleep for SLEEPSEC seconds
+		//don't want to probe too much or else we'll cause too many page faults
+		//if we need to leave the loop, then do not sleep
+		usleep(SLEEPSEC*1000000);
+
+		//use localCnt so we don't access it too much
+		//because we will page fault more between CPU and GPU
+		localCnt = *cnt;
+
+		printf("\nNum elems generated in array on GPU: %llu", localCnt);
+		ret = checkQueriesComplete(completedArray, offSetComplete, numElemsCompletedArray, NCOMPLETETHRESH);
+		// ret = checkQueriesCompleteAsFraction(completedArray, offSetComplete, numElemsCompletedArray, FRACTIONTHREADSCOMPLETE);
+		printf("\nret: %d", ret);
+
+		// continue;
+
+		//Output array:
+		//If ret is true, need to scan for the elements and then sort in separate buffer
+		
+		if(ret==1)
+		{
+		printf("\nretTrueIteration: %u", retTrueIteration);
+
+		uint64_t elemsToSort = computeElemsToSort(countNeighbors, offSetComplete, numElemsCompletedArray, NCOMPLETETHRESH);	
+		// uint64_t elemsToSort = computeElemsToSortAsFraction(countNeighbors, offSetComplete, numElemsCompletedArray, FRACTIONTHREADSCOMPLETE);	
+		printf("\nElems to sort: %lu", elemsToSort);		
+
+
+		
+		//Range of the "point ids" to read from the unsorted array:
+
+		//original
+		rangeMin = offSetComplete;
+		rangeMax = min(numElemsCompletedArray, offSetComplete+NCOMPLETETHRESH);
+
+		//when using the fraction of work
+		//TODO: return rangeMin/rangeMax using computeElemsToSortAsFraction above 
+		// rangeMin = offSetComplete;
+		// rangeMax = min((unsigned int)numElemsCompletedArray, (unsigned int)offSetComplete+(unsigned int)(numElemsCompletedArray*FRACTIONTHREADSCOMPLETE));
+		
+		//copy unsorted elems to bufferToSort using a scan
+		cntOutputBuffer = 0;
+
+		#if PREFETCH==1
+		//Prefetch chunk of unsortedBuffer to CPU memory
+		cudaMemPrefetchAsync(&unsortedBuffer[elemsLowerBound], sizeof(unsigned int)*localCnt, cudaCpuDeviceId, 0);
+		#endif
+
+		elemsLowerBound = sequentialCopyToBufferOutputLowerBound(bufferToSort, dev_pointIDKey, dev_pointInDistValue, 
+			elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
+
+		printf("\nelemsLowerBound (after function): %lu", elemsLowerBound);
+		
+		//sort buffer
+		printf("\nSorting %lu elements corresponding to query points in the range [%u, %u)", elemsToSort, rangeMin, rangeMax);
+		__gnu_parallel::sort(bufferToSort, bufferToSort+elemsToSort, compareKeyValPairs);
+
+		//increase offset for output array
+		idxOffset+=elemsToSort;
+		
+		//increase offset
+		offSetComplete+=NCOMPLETETHRESH;
+
+		//increment total sorted elements
+		totalSortedElems+=elemsToSort;
+
+		printf("\nTotal sorted elements: %lu (frac: %f)", totalSortedElems, (totalSortedElems*1.0)/(maxUnsortedNELEMS*1.0));
+
+		retTrueIteration++;
+
+		}
+
+			
+	} //end of while loop
+
+	//////////////////////////
+	//Sort the "leftovers" that were not sorted above
+
+	bufferToSort = &sortedKeyValPairs[idxOffset];
+
+	NCOMPLETETHRESH = numElemsCompletedArray;
+
+	// uint64_t prefixSumSize=0;
+	uint64_t elemsToSort = computeElemsToSort(countNeighbors, offSetComplete, numElemsCompletedArray, NCOMPLETETHRESH);	
+	
+	// unsigned int * bufferToSort = (unsigned int*)malloc(sizeof(unsigned int)*(elemsToSort));
+	fprintf(stderr,"\n[Leftovers] Elems to sort: %lu", elemsToSort);
+
+	//Range of the "point ids" to read from the unsorted array:
+	rangeMin = offSetComplete;
+	rangeMax = numElemsCompletedArray;
+	
+
+	#if PREFETCH==1
+	//Prefetch last chunk of unsortedBuffer to CPU memory
+	cudaMemPrefetchAsync(&unsortedBuffer[elemsLowerBound], sizeof(unsigned int)*maxUnsortedNELEMS, cudaCpuDeviceId, 0);
+	#endif
+
+	elemsLowerBound = sequentialCopyToBufferOutputLowerBound(bufferToSort, dev_pointIDKey, dev_pointInDistValue, 
+		elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
+
+	fprintf(stderr,"\n[Leftovers] cntOutputBuffer: %lu", cntOutputBuffer);
+	fprintf(stderr,"\n[Leftovers] Sorting %lu elements corresponding to query points in the range [%u, %u]", elemsToSort, rangeMin, rangeMax);
+	
+	printf("\n\n");
+
+	//sort buffer
+	fprintf(stderr,"\n[Leftovers] Sorting %lu elements corresponding to query points in the range [%u, %u]", elemsToSort, rangeMin, rangeMax);
+	__gnu_parallel::sort(bufferToSort, bufferToSort+elemsToSort, compareKeyValPairs);
+
+	uint64_t lastIdxArray = idxOffset+elemsToSort;
+	fprintf(stderr, "\n[Leftovers] Last idx: %lu (should be NELEMS)", lastIdxArray);
+
+}
+
+
+bool checkQueriesComplete(bool * completedArray, unsigned int offSetComplete, const unsigned int numElemsCompletedArray, const unsigned int NCOMPLETETHRESH)
+{
+	unsigned int ubound = min(numElemsCompletedArray, offSetComplete+NCOMPLETETHRESH);
+
+	//flag that denotes that the array should be sorted based on completed work
+	//assume true
+	bool flag = 1;
+	for(unsigned int i=offSetComplete; i<ubound; i++){
+		if(completedArray[i]==0){
+			flag = 0;
+			break;
+		}
+	}
+
+	return flag;
+}
+
+
+uint64_t computeElemsToSort(unsigned int * countNeighbors, unsigned int offSetComplete, const unsigned int numElemsCompletedArray, const unsigned int NCOMPLETETHRESH)
+{
+	uint64_t numElemsToSort=0;
+	unsigned int ubound = min(numElemsCompletedArray, offSetComplete+NCOMPLETETHRESH);
+
+	#pragma omp parallel for reduction(+:numElemsToSort) shared(countNeighbors, ubound) num_threads(NCOPYTHREADS)
+	for(unsigned int i=offSetComplete; i<ubound; i++){
+		numElemsToSort +=(uint64_t)countNeighbors[i];
+	}
+
+	return numElemsToSort;
+}
+
+
+//This variant counts the number of elements that have already been copied in unsortedBuffer
+// so that it does not need to be re-scanned 
+uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsigned int * dev_pointIDKey,
+	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,
+	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound)
+{
+	uint64_t cntOutputBuffer = 0;
+	
+	bool flagElemsLowerBound = 0;
+	uint64_t copiedContiguousElemsLowerBound = elemsLowerBound;
+	
+	// for(uint64_t i=0; i<(localCnt) && (cntOutputBuffer<elemsToSort); i++)
+	for(uint64_t i=elemsLowerBound; i<localCnt && (cntOutputBuffer<elemsToSort); i++)
+	{
+
+		if(dev_pointIDKey[i]>=rangeMin && dev_pointIDKey[i]<rangeMax)
+		{
+			bufferToSort[cntOutputBuffer].key = dev_pointIDKey[i];
+			bufferToSort[cntOutputBuffer].val = dev_pointInDistValue[i];
+			cntOutputBuffer++;
+
+			//if the flag has not been set
+			if(flagElemsLowerBound==0){
+				copiedContiguousElemsLowerBound = i;
+			}
+		}
+		
+		//if an element exceeds rangeMax then we need to set the flag
+		//because we need to go back and start from that index on a future iteration
+		if(flagElemsLowerBound!=1 && dev_pointIDKey[i]>rangeMin){
+			flagElemsLowerBound = 1;
+		}
+
+
+
+	}
+
+	// printf("\nIn function copiedContiguousElemsLowerBound: %lu", copiedContiguousElemsLowerBound);
+
+	return copiedContiguousElemsLowerBound;
+}
