@@ -877,7 +877,7 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 		fprintf(stderr,"\nTotal of total size of result array: %llu", *dev_cnt);
 
 		if(keyValElementsSize < *dev_cnt) {
-			cout << "\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n" << std::endl;
+			fprintf(stderr,"\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n\n");
 		}
 		
 		// find the size of the number of results
