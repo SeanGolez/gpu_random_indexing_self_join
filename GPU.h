@@ -62,10 +62,16 @@ void probeAndSort(
 	const unsigned int numElemsCompletedArray 
 	);
 
+bool allComplete(bool * completedArray, unsigned int offSetComplete, const unsigned int numElemsCompletedArray);
+
 bool checkQueriesComplete(bool * completedArray, unsigned int offSetComplete, const unsigned int numElemsCompletedArray, const unsigned int NCOMPLETETHRESH);
 
 uint64_t computeElemsToSort(unsigned int * countNeighbors, unsigned int offSetComplete, const unsigned int numElemsCompletedArray, const unsigned int NCOMPLETETHRESH);
 
 uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsigned int * dev_pointIDKey,
+	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,
+	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound);
+
+void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDKey,
 	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,
 	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound);
