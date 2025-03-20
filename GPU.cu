@@ -704,14 +704,18 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 	//ALLOCATE MEMORY FOR THE RESULT SET USING THE BATCH ESTIMATOR
 	///////////////////////////////////
 
+	size_t keyValElementsSize = ((size_t)(KEYVALUEMEM) * (1024 * 1024 * 1024)) / sizeof(keyValPair);
+	printf("\nNumber of allocated key value pairs: %zu", keyValElementsSize);
+
+	/*
 	unsigned int * dev_pointIDKey; //key
 	unsigned int * dev_pointInDistValue; //value
-
-	size_t keyValElementsSize = ((size_t)(KEYVALUEMEM / 2) * (1024 * 1024 * 1024)) / sizeof(unsigned int);
-	printf("\nNumber of allocated key value pairs: %zu", keyValElementsSize);
-	
 	gpuErrchk(cudaMallocManaged((void **)&dev_pointIDKey, keyValElementsSize * sizeof(unsigned int)));
 	gpuErrchk(cudaMallocManaged((void **)&dev_pointInDistValue, keyValElementsSize * sizeof(unsigned int)));
+	*/
+
+	keyValPair * keyValPairs;
+	gpuErrchk(cudaMallocManaged((void **)&keyValPairs, keyValElementsSize * sizeof(keyValPair)));
 
 	//HOST RESULT ALLOCATION FOR THE GPU TO COPY THE DATA INTO A PINNED MEMORY ALLOCATION
 	//ON THE HOST
@@ -858,7 +862,7 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 		kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream>>>(dev_debug1, dev_debug2, *DBSIZE, 
 	dev_offset, dev_batchNumber, dev_database, dev_epsilon, dev_grid, dev_indexLookupArr, 
 	dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt, dev_nNonEmptyCells, dev_gridCellNDMask, 
-	dev_gridCellNDMaskOffsets, dev_pointIDKey, dev_pointInDistValue, dev_orderedQueryPntIDs, dev_workCounts);
+	dev_gridCellNDMaskOffsets, keyValPairs, dev_orderedQueryPntIDs, dev_workCounts);
 
 		// errCode=cudaDeviceSynchronize();
 		// cout <<"\n\nError from device synchronize: "<<errCode;
@@ -926,15 +930,6 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 		
 		
 		// gnu parallel sort by key 
-		keyValPair * keyValPairs = new keyValPair[*dev_cnt];
-		#pragma omp parallel for num_threads(8)
-		for( unsigned long long int i=0; i < *dev_cnt; i++ ) {
-			keyValPairs[i].key = dev_pointIDKey[i];
-			keyValPairs[i].val = dev_pointInDistValue[i];
-		}
-		// This gets killed here for large result set size
-		cudaFree(dev_pointIDKey);
-		cudaFree(dev_pointInDistValue);
 		fprintf(stderr, "\nSorting pairs...");
 		double tstart_sort = omp_get_wtime();
 		__gnu_parallel::sort(keyValPairs, keyValPairs+*dev_cnt, compareKeyValPairs);
@@ -1137,6 +1132,8 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 	free(batchOffset);
 	free(batchNumber);
 
+	cudaFree(keyValPairs);
+
 	
 	//free data related to the individual streams for each batch
 	// for (int i=0; i<GPUSTREAMS; i++){
@@ -1147,7 +1144,6 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 		cudaFreeHost(pointInDistValue[i]);
 	}
 	*/
-	delete[] keyValPairs;
 
 
 	double tFreeEnd=omp_get_wtime();
