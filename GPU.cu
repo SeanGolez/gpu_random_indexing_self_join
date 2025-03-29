@@ -274,7 +274,7 @@ return estimatedTotalSizeWithAlpha;
 
 }
 
-double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, struct grid * index, 
+std::vector<double> distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, struct grid * index, 
 	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts)
@@ -855,6 +855,8 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 		const int TOTALBLOCKS=ceil((1.0*(*DBSIZE))/(1.0*BLOCKSIZE));	
 		printf("\ntotal blocks: %d",TOTALBLOCKS);
 
+		double tstart_kernel = omp_get_wtime();
+
 		cudaDeviceSynchronize();
 
 		//execute kernel	
@@ -873,6 +875,10 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 		}
 
 		cudaDeviceSynchronize();
+
+		double tend_kernel = omp_get_wtime();
+
+		printf("\nKernel execution time: %f", (tend_kernel - tstart_kernel));
 
 		fprintf(stderr,"\nTotal of total size of result array: %llu", *dev_cnt);
 
@@ -1152,7 +1158,9 @@ double distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoint
 	// }
 	cout<<"\n** last error at end of fn batches (could be from freeing memory): "<<cudaGetLastError();
 
-	return (tend_sort - tstart_sort);
+	std::vector<double> times = {(tend_kernel - tstart_kernel), (tend_sort - tstart_sort), (tableconstuctend - tableconstuctstart)};
+
+	return times;
 
 }
 

@@ -245,7 +245,7 @@ int main(int argc, char *argv[])
 
 	double tstart=omp_get_wtime();	
 
-	double sortTime = distanceTableNDGridBatches(&NDdataPoints, &epsilon, index, gridCellLookupArr, &nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, workCounts);
+	std::vector<double> times = distanceTableNDGridBatches(&NDdataPoints, &epsilon, index, gridCellLookupArr, &nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, workCounts);
 	
 	double tend=omp_get_wtime();
 
@@ -255,9 +255,9 @@ int main(int argc, char *argv[])
 
 
 #if COUNTMETRICS==1
-	gpu_stats<<totalTime<<", "<<sortTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<", COMPS/CELLCOMPS: " << workCounts[0] << ", " << workCounts[1] << endl;
+	gpu_stats<<totalTime<<", "<<times[0]<<", "<<times[1]<<", "<<times[2]<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<", COMPS/CELLCOMPS: " << workCounts[0] << ", " << workCounts[1] << endl;
 #else
-	gpu_stats<<totalTime<<", "<<sortTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<endl;
+	gpu_stats<<totalTime<<", "<<times[0]<<", "<<times[1]<<", "<<times[2]<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<endl;
 #endif
 	gpu_stats.close();
 
