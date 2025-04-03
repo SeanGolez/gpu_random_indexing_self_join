@@ -17,10 +17,10 @@
 #define BLOCKSIZE 256
  
 //Number of dimensions of the data (n)
-#define GPUNUMDIM 18
+#define GPUNUMDIM 3
 
 //Number of indexed dimensions (k)
-#define NUMINDEXEDDIM 6
+#define NUMINDEXEDDIM 3
 
 //Number of random indexes to generate (at least 1)
 #define NUMRANDINDEXES 5

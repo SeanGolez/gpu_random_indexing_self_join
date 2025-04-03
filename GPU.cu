@@ -240,10 +240,6 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, uns
 
 		uint64_t estimatedNeighbors=(uint64_t)cnt_batchEst[i]*(uint64_t)offsetRate;	
 		printf("\nFrom gpu cnt: %d, offset rate: %d", cnt_batchEst[i],offsetRate);
-		
-		
-		
-
 
 		
 		uint64_t estimatedTotalSizeWithAlphaSingleIndex = estimatedNeighbors*(1.0+alpha*1.0);
@@ -572,7 +568,7 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 	gpuErrchk(cudaMemcpy( dev_allNNonEmptyCells, allNNonEmptyCells, sizeof(unsigned int)*(NUMTOTALINDEXES), cudaMemcpyHostToDevice ));
 
 	///////////////////////////////////
-	//NUMBER OF NON-EMPTY CELLS
+	//END NUMBER OF NON-EMPTY CELLS
 	///////////////////////////////////
 
 	///////////////////////////////////
@@ -586,36 +582,9 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 	gpuErrchk(cudaMemcpy( dev_whichIndexPoints, whichIndexPoints, sizeof(unsigned int)*(DBSIZE), cudaMemcpyHostToDevice ));
 
 	///////////////////////////////////
-	//WHICH INDEX TO USE FOR EACH POINT
+	//END WHICH INDEX TO USE FOR EACH POINT
 	///////////////////////////////////
 
-	
-
-	/*
-	//////////////////////////////////
-	//ND MASK -- The array, the offsets, and the size of the array
-	//////////////////////////////////
-
-	//NDMASK
-	unsigned int * dev_gridCellNDMask;
-
-	//Allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_gridCellNDMask, sizeof(unsigned int)*(*nNDMaskElems)));
-	
-	gpuErrchk(cudaMemcpy( dev_gridCellNDMask, gridCellNDMask, sizeof(unsigned int)*(*nNDMaskElems), cudaMemcpyHostToDevice ));
-	
-	//NDMASKOFFSETS
-	unsigned int * dev_gridCellNDMaskOffsets;
-
-	//Allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_gridCellNDMaskOffsets, sizeof(unsigned int)*(2*NUMINDEXEDDIM)));
-
-	gpuErrchk(cudaMemcpy( dev_gridCellNDMaskOffsets, gridCellNDMaskOffsets, sizeof(unsigned int)*(2*NUMINDEXEDDIM), cudaMemcpyHostToDevice ));
-
-	//////////////////////////////////
-	//End ND MASK -- The array, the offsets, and the size of the array
-	//////////////////////////////////
-	*/
 
 	//////////////////////////////////
 	// find start and stop positions for each index for batch estimator
@@ -751,18 +720,7 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 	//allocate on the device
 	gpuErrchk(cudaMalloc((void**)&dev_offset, sizeof(unsigned int)*GPUSTREAMS));
 
-	/*
-	//Batch number to calculate the point to process (in conjunction with the offset)
-	//offset into the database when batching the results
-	unsigned int * batchNumber; 
-	batchNumber=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
 
-	unsigned int * dev_batchNumber; 
-
-	//allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_batchNumber, sizeof(unsigned int)*GPUSTREAMS));
-
-	*/
 
 	////////////////////////////////////
 	//END OFFSET INTO THE DATABASE FOR BATCHING THE RESULTS
@@ -907,53 +865,8 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 		gpuErrchk(cudaMemcpy(dev_workCounts, workCounts, 2*sizeof(CTYPE), cudaMemcpyHostToDevice ));
 #endif
 
-	// unsigned int batchSize=(*DBSIZE)/numBatches;
-	// unsigned int batchesThatHaveOneMore=(*DBSIZE)-(batchSize*numBatches); //batch number 0- < this value have one more
-	// printf("\nBatches that have one more GPU thread: %u batchSize(N): %u, \n",batchesThatHaveOneMore,batchSize);
-
 	uint64_t totalResultsLoop=0;
 
-	/*
-	// initialize array, size =  numBatches * # of groups
-	unsigned int * batchStartsEachGroup;
-	unsigned int * batchEndsEachGroup;
-	batchStartsEachGroup=(unsigned int*)malloc(indexGroups->size()*numBatches*sizeof(unsigned int));
-	batchEndsEachGroup=(unsigned int*)malloc(indexGroups->size()*numBatches*sizeof(unsigned int));
-	// loop through each group
-	for(int i=0; i<indexGroups->size(); i++) {
-		// get approximate batch size for each (rounded up)
-		unsigned int batchSize = (((*indexGroups)[i].indexmax - (*indexGroups)[i].indexmin)+ numBatches - 1) / numBatches;
-		unsigned int currIdx = (*indexGroups)[i].indexmin;
-
-		// start at 0
-		batchStartsEachGroup[(i*numBatches)] = currIdx;
-
-		// loop through each numBatches
-		for( int j=0; j<numBatches; j++) {
-			// if not end
-			if( j < numBatches-1 ) {
-				currIdx += batchSize;
-				batchEndsEachGroup[(i*numBatches)+j] = currIdx;
-				batchStartsEachGroup[(i*numBatches)+j+1] = currIdx;
-			}
-			else {
-				batchEndsEachGroup[(i*numBatches)+j] = (*indexGroups)[i].indexmax;
-			}
-		}
-	}
-	*/
-
-	/*
-	for(int i=0; i<indexGroups->size(); i++) {
-		printf("\nBatch Size:%d", (((*indexGroups)[i].indexmax - (*indexGroups)[i].indexmin)+ numBatches - 1) / numBatches);
-		printf("\n%d: %d, %d\n", (*indexGroups)[i].index, (*indexGroups)[i].indexmin, (*indexGroups)[i].indexmax);
-		for( int j=0; j<numBatches; j++) {
-			printf("\nstart:%d", batchStartsEachGroup[(i*numBatches)+j]);
-			printf("\nend:%d", batchEndsEachGroup[(i*numBatches)+j]);
-		}
-		printf("\n");
-	}
-	*/
 
 	unsigned int * indexGroupOffset; 
 	indexGroupOffset=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
@@ -974,16 +887,6 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 		printf("\nbatchesThatHaveOneMoreForEachGroup %d: %d", i, batchesThatHaveOneMoreForEachGroup[i]);
 	}
 
-	/*
-	// allocate where each batch will run for each group to GPU
-	unsigned int * dev_batchStartsEachGroup;
-	unsigned int * dev_batchEndsEachGroup;
-	gpuErrchk(cudaMalloc((void**)&dev_batchStartsEachGroup, indexGroups->size()*numBatches *sizeof(unsigned int)));
-	gpuErrchk(cudaMemcpy(dev_batchStartsEachGroup, batchStartsEachGroup, indexGroups->size()*numBatches *sizeof(unsigned int), cudaMemcpyHostToDevice));
-	gpuErrchk(cudaMalloc((void**)&dev_batchEndsEachGroup, indexGroups->size()*numBatches *sizeof(unsigned int)));
-	gpuErrchk(cudaMemcpy(dev_batchEndsEachGroup, batchEndsEachGroup, indexGroups->size()*numBatches *sizeof(unsigned int), cudaMemcpyHostToDevice));
-	*/
-
 	double totalKernelTime = 0;
 	double totalTableConstructTime = 0;
 
@@ -997,50 +900,12 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 		for (int i=0; i<largestNumBatches; i++)
 		// for (int i=0; i<1; i++)
 		{	
-			
 
 			int tid=omp_get_thread_num();
-			/*
-			printf("\ntid: %d, starting iteration: %d",tid,i);
-			//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
-			//AS ONE GPU THREAD PROCESSES A SINGLE POINT
-
-			if (i<batchesThatHaveOneMore)
-			{
-				N[tid]=batchSize+1;	
-				printf("\nN (GPU threads): %d, tid: %d",N[tid], tid);
-			}
-			else
-			{
-				N[tid]=batchSize;	
-				printf("\nN (1 less): %d tid: %d",N[tid], tid);
-			}
-
-			//set relevant parameters for the batched execution that get reset
-			
-			//copy N to device 
-			//N IS THE NUMBER OF THREADS
-			gpuErrchk(cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
-
-			//the batched result set size (reset to 0):
-			cnt[tid]=0;
-			gpuErrchk(cudaMemcpyAsync( &dev_cnt[tid], &cnt[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
-
-			//the offset for batching, which keeps track of where to start processing at each batch
-			batchOffset[tid]=numBatches; //for the strided
-			gpuErrchk(cudaMemcpyAsync( &dev_offset[tid], &batchOffset[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
-
-			//the batch number for batching with strided
-			batchNumber[tid]=i;
-			gpuErrchk(cudaMemcpyAsync( &dev_batchNumber[tid], &batchNumber[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
-
-
-			const int TOTALBLOCKS=ceil((1.0*(N[tid]))/(1.0*BLOCKSIZE));	
-			printf("\ntotal blocks: %d",TOTALBLOCKS);
 
 			// note: blocksize is number of points running on a unit of the GPU
 			//		total blocks is number of threads needed
-			*/
+			
 			unsigned int gridIncrement =  0;
 			for(int indexGroup=0; indexGroup<indexGroups->size(); indexGroup++) {
 				// get index
