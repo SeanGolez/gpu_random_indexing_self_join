@@ -29,6 +29,7 @@ __device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, DTYPE*
 	DTYPE * epsilon, struct grid * index, unsigned int * indexLookupArr, struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrStartEnd, 
 	DTYPE* point, unsigned int* cnt,int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts);
 
+
 //functions for index on the GPU
 __global__ void kernelIndexComputeNonemptyCells(DTYPE* database, const unsigned int N, const unsigned int whichDatabase, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t * pointCellArr);
 __global__ void kernelInitEnumerateDB(unsigned int * databaseVal, const unsigned int N);
@@ -39,3 +40,14 @@ __global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE*
 
 
 __global__ void kernelPairwiseDatabaseRotation( DTYPE * database, const unsigned int N, const unsigned int whichDatabase, DTYPE * theta, unsigned int * dimPair );
+
+
+//for managed memeory version
+__global__ void kernelNDGridIndexGlobalManagedMemory(unsigned int *debug1, unsigned int *debug2, const unsigned int N,  
+	const unsigned int indexGroupOffset, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
+	struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrEnd, DTYPE* minArr, unsigned int * nCells, 
+	unsigned long long int * cnt, struct keyValPair * keyValPairs, unsigned int * orderedQueryPntIDs, CTYPE* workCounts);
+
+__device__	void evaluateCellManagedMemory(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArrStart, 
+	struct gridCellLookup * gridCellLookupArrStartEnd, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, DTYPE* point, 
+	unsigned long long int* cnt, struct keyValPair * keyValPairs, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts);

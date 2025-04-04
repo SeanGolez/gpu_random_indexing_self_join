@@ -17,16 +17,16 @@
 #define BLOCKSIZE 256
  
 //Number of dimensions of the data (n)
-#define GPUNUMDIM 3
+#define GPUNUMDIM 18
 
 //Number of indexed dimensions (k)
-#define NUMINDEXEDDIM 3
+#define NUMINDEXEDDIM 6
 
-//Number of random indexes to generate (at least 1)
-#define NUMRANDINDEXES 5
+//Number of random indexes to generate (at least 0)
+#define NUMRANDINDEXES 3
 
-//Number of random rotations to generate (at least 1)
-#define NUMRANDROTATIONS 5
+//Number of random rotations to generate (at least 0)
+#define NUMRANDROTATIONS 0
 
 // Number of dimension pairs to rotation
 #define NUMPAIRROTATIONS 6
@@ -50,6 +50,14 @@
 #define PRINTNEIGHBORTABLE 0
 ///////////////////////
 
+///////////////////////
+//Managed Memory:
+//use managed memory for distance calculation kernel
+#define MANAGEDMEMORY 1
+
+//number of bytes to allocate for key value pairs in GiB
+#define KEYVALUEMEM 210
+///////////////////////
 
 ///////////////////////
 //Optimizations:
@@ -87,7 +95,7 @@
 
 //used to see how many point comparisons and grid cell searches
 //For performance evaluation purposes, and not when timing the algorithm
-#define COUNTMETRICS 1
+#define COUNTMETRICS 0
 
 //Data type for the above
 #define CTYPE unsigned long long
@@ -113,5 +121,3 @@
 						 
 //end batching scheme					
 ///////////////////////
-
-#define TESTSCRIPT 0

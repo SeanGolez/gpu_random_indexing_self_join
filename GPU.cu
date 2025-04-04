@@ -11,6 +11,7 @@
 #include <queue>
 #include <unistd.h>
 #include <random>
+#include <parallel/algorithm>
 
 //thrust
 #include <thrust/host_vector.h>
@@ -47,7 +48,11 @@ bool compareWorkArrayByNumPointsInCell(const workArray &a, const workArray &b)
     return a.pntsInCell > b.pntsInCell;
 }
 
-
+//sort descending
+bool compareKeyValPairs(const keyValPair& a, const keyValPair& b)
+{
+	return a.key < b.key;
+}
 
 //sort ascending
 bool compareByPointValue(const key_val_sort &a, const key_val_sort &b)
@@ -306,7 +311,7 @@ return estimatedTotalSizeWithAlpha;
 
 }
 
-double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE, unsigned int NUMTOTALINDEXES, DTYPE * epsilon, struct grid * allIndex, 
+void distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE, unsigned int NUMTOTALINDEXES, DTYPE * epsilon, struct grid * allIndex, 
 	struct gridCellLookup * allGridCellLookupArr, unsigned int * allNNonEmptyCells, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * allIndexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, CTYPE* workCounts, unsigned int * orderedIndexPntIDs, std::vector<indexArrayPntGroups> * indexGroups, unsigned int * orderedQueryPntIDs,
@@ -517,6 +522,7 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 	//COUNT VALUES -- RESULT SET SIZE FOR EACH KERNEL INVOCATION
 	///////////////////////////////////
 
+#if MANAGEDMEMORY == 0
 	//total size of the result set as it's batched
 	//this isnt sent to the GPU
 	unsigned int * totalResultSetCnt;
@@ -534,6 +540,16 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 
 	//allocate on the device
 	gpuErrchk(cudaMalloc((void**)&dev_cnt, sizeof(unsigned int)*GPUSTREAMS));
+#endif
+
+#if MANAGEDMEMORY == 1
+	unsigned long long int * dev_cnt; 
+
+	//allocate on the device
+	cudaMallocManaged(&dev_cnt, sizeof(unsigned long long int));
+	cudaMemset(dev_cnt, 0, sizeof(unsigned long long int));
+	cudaMemPrefetchAsync(dev_cnt, sizeof(unsigned long long int), cudaCpuDeviceId);
+#endif
 
 	///////////////////////////////////
 	//END COUNT VALUES -- RESULT SET SIZE FOR EACH KERNEL INVOCATION
@@ -571,6 +587,7 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 	//END NUMBER OF NON-EMPTY CELLS
 	///////////////////////////////////
 
+#if MANAGEDMEMORY == 0
 	///////////////////////////////////
 	//WHICH INDEX TO USE FOR EACH POINT
 	///////////////////////////////////
@@ -584,7 +601,6 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 	///////////////////////////////////
 	//END WHICH INDEX TO USE FOR EACH POINT
 	///////////////////////////////////
-
 
 	//////////////////////////////////
 	// find start and stop positions for each index for batch estimator
@@ -666,7 +682,7 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 	free(stopGridPtrs);
 	free(startIndexPtrs);
 
-
+#endif
 
 	//initialize new neighbortable. resize to the number of batches	
 	//Only use this if using unicomp
@@ -758,10 +774,33 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 
 	////////////////////////////////////
 	//END TWO DEBUG VALUES SENT TO THE GPU FOR GOOD MEASURE
-	////////////////////////////////////			
-
+	////////////////////////////////////
 	
+	/////////////////////////////////
+	//CREATE STREAMS
+	////////////////////////////////
 
+	cudaStream_t stream[GPUSTREAMS];
+	
+	for (int i=0; i<GPUSTREAMS; i++){
+	cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking);
+	}	
+
+	/////////////////////////////////
+	//END CREATE STREAMS
+	////////////////////////////////
+
+	uint64_t totalResultsLoop=0;
+
+	unsigned int * indexGroupOffset; 
+	indexGroupOffset=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
+	
+	unsigned int * dev_indexGroupOffset; 
+	
+	//allocate on the device
+	gpuErrchk(cudaMalloc((void**)&dev_indexGroupOffset, sizeof(unsigned int)*GPUSTREAMS));
+	
+#if MANAGEDMEMORY == 0
 	///////////////////
 	//ALLOCATE POINTERS TO INTEGER ARRAYS FOR THE VALUES FOR THE NEIGHBORTABLES
 	///////////////////
@@ -833,21 +872,6 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 	////////////////////////////////
 	
 	
-
-	/////////////////////////////////
-	//CREATE STREAMS
-	////////////////////////////////
-
-	cudaStream_t stream[GPUSTREAMS];
-	
-	for (int i=0; i<GPUSTREAMS; i++){
-	cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking);
-	}	
-
-	/////////////////////////////////
-	//END CREATE STREAMS
-	////////////////////////////////
-	
 	
 
 	///////////////////////////////////
@@ -865,16 +889,6 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 		gpuErrchk(cudaMemcpy(dev_workCounts, workCounts, 2*sizeof(CTYPE), cudaMemcpyHostToDevice ));
 #endif
 
-	uint64_t totalResultsLoop=0;
-
-
-	unsigned int * indexGroupOffset; 
-	indexGroupOffset=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
-	
-	unsigned int * dev_indexGroupOffset; 
-	
-	//allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_indexGroupOffset, sizeof(unsigned int)*GPUSTREAMS));
 
 	unsigned int * batchesThatHaveOneMoreForEachGroup;
 	unsigned int * batchSizeForEachGroup;
@@ -1143,14 +1157,124 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 		} //END LOOP OVER THE GPU BATCHES
 
 	printf("\n");
+#endif
+
+#if MANAGEDMEMORY == 1
+	/////////////////////////////////
+	//ALLOCATE FIXED MEMORY FRO KEY VALUE PAIRS
+	////////////////////////////////
+
+	size_t keyValElementsSize = ((size_t)(KEYVALUEMEM) * (1024 * 1024 * 1024)) / sizeof(keyValPair);
+	printf("\nNumber of allocated key value pairs: %zu", keyValElementsSize);
+
+	keyValPair * keyValPairs;
+	gpuErrchk(cudaMallocManaged((void **)&keyValPairs, keyValElementsSize * sizeof(keyValPair)));
+
+	/////////////////////////////////
+	//END ALLOCATE FIXED MEMORY FRO KEY VALUE PAIRS
+	////////////////////////////////
+
+	CTYPE* dev_workCounts;
+	cudaMalloc((void **)&dev_workCounts, sizeof(CTYPE)*2);
+#if COUNTMETRICS == 1
+		gpuErrchk(cudaMemcpy(dev_workCounts, workCounts, 2*sizeof(CTYPE), cudaMemcpyHostToDevice ));
+#endif
+
+	double tstart_kernel = omp_get_wtime();
+
+	errCode=cudaDeviceSynchronize();
+	cout <<"\n\nError from device synchronize: "<<errCode;
+
+		
+
+	#pragma omp parallel for schedule(static,1) num_threads(GPUSTREAMS)
+	for(int indexGroup=0; indexGroup<indexGroups->size(); indexGroup++) {
+
+		int tid=omp_get_thread_num();
+
+		// get index
+		unsigned int whichIndex = (*indexGroups)[indexGroup].index;
+		unsigned int whichDatabase = 0;
+		if( whichIndex >= (NUMRANDINDEXES + 1)) {
+			whichDatabase = whichIndex - NUMRANDINDEXES;
+		}
+
+		printf("\nStarting tid: %d, index: %d, database: %d", tid, whichIndex, whichDatabase);
+
+		// find grid increment
+		unsigned int gridIncrement =  0;
+		for( unsigned int index=0; index < whichIndex; index++ ) {
+			gridIncrement += allNNonEmptyCells[index];
+		}
+
+		unsigned int groupSize = (*indexGroups)[indexGroup].indexmax - (*indexGroups)[indexGroup].indexmin;
+
+		const int TOTALBLOCKS=ceil((1.0*(groupSize))/(1.0*BLOCKSIZE));	
+		printf("\ntotal blocks: %d",TOTALBLOCKS);
+
+
+		//execute kernel	
+		//0 is shared memory pool
+		kernelNDGridIndexGlobalManagedMemory<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(dev_debug1, dev_debug2, groupSize, (*indexGroups)[indexGroup].indexmin,
+	dev_database+(whichDatabase * (DBSIZE) * GPUNUMDIM), dev_epsilon, dev_allGrids+gridIncrement, dev_allIndexLookupArr+(whichIndex * (DBSIZE)), 
+	dev_allGridCellLookupArr+gridIncrement, dev_allGridCellLookupArr+gridIncrement+allNNonEmptyCells[whichIndex], dev_allMinArr+(whichIndex * NUMINDEXEDDIM), 
+	dev_allNCells+(whichIndex * NUMINDEXEDDIM), dev_cnt, keyValPairs, dev_orderedQueryPntIDs, dev_workCounts);
+
+		// errCode=cudaDeviceSynchronize();
+		// cout <<"\n\nError from device synchronize: "<<errCode;
+
+		cout <<"\n\nKERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
+		if ( cudaSuccess != cudaGetLastError() ){
+			cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
+		}
+
+		errCode=cudaDeviceSynchronize();
+		cout <<"\n\nError from device synchronize: "<<errCode;;
+
+		printf("\nRunning total of total size of result array: %llu", *dev_cnt); 
+	}
+
+	
+	double tend_kernel = omp_get_wtime();
+
+	printf("\nTotal kernel execution time: %f", (tend_kernel - tstart_kernel));
+
+	if(keyValElementsSize < *dev_cnt) {
+		fprintf(stderr,"\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n\n");
+	}
+	
+	
+	// gnu parallel sort by key 
+	printf("\nSorting pairs...");
+	double tstart_sort = omp_get_wtime();
+	__gnu_parallel::sort(keyValPairs, keyValPairs+*dev_cnt, compareKeyValPairs);
+	double tend_sort = omp_get_wtime();
+	printf("\nSort time: %f", (tend_sort - tstart_sort));
+	
+
+	double tableconstuctstart=omp_get_wtime();
+
+	//set the number of neighbors in the pointer struct:
+	struct neighborDataPtrs tmpStruct;
+	tmpStruct.sizeOfDataArr=*dev_cnt;    
+	tmpStruct.dataPtr=new int[*dev_cnt]; // NOTE: Do not free this from memory until program is finished
+
+	constructNeighborTableKeyValueWithPtrs(keyValPairs, neighborTable, tmpStruct.dataPtr, dev_cnt);
+	
+	
+	double tableconstuctend=omp_get_wtime();	
+	
+	printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
+
+	totalResultsLoop = *dev_cnt;
+#endif
 
 #if COUNTMETRICS == 1
         cudaMemcpy(workCounts, dev_workCounts, 2*sizeof(CTYPE), cudaMemcpyDeviceToHost );
         printf("\nPoint comparisons: %llu, Cell evaluations: %llu", workCounts[0],workCounts[1]);
 #endif
 
-	printf("\nTotal number of kernel invocations: %d", numKernelInvocations);
-
+	// printf("\nTotal number of kernel invocations: %d", numKernelInvocations);
 	// printf("\nTotal Kernel Invocation Time: %f", totalKernelTime);
 	// printf("\nTable construct time: %f", totalTableConstructTime);
 
@@ -1191,18 +1315,9 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 
 	double tFreeStart=omp_get_wtime();
 
-	for (int i=0; i<GPUSTREAMS; i++){
-		errCode=cudaStreamDestroy(stream[i]);
-		if(errCode != cudaSuccess) {
-		cout << "\nError: destroying stream" << errCode << endl; 
-		}
-	}
-
-	/*
 	#if QUERYREORDER==1
 	cudaFree(dev_orderedQueryPntIDs);
 	#endif
-	*/
 
 	//free the data on the device
 	// cudaFree(dev_database);
@@ -1217,21 +1332,31 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 	cudaFree(dev_N); 	
 	cudaFree(dev_cnt); 
 	cudaFree(dev_offset); 
-	// cudaFree(dev_batchNumber); 
 	cudaFree(dev_indexGroupOffset);
+	// cudaFree(dev_batchNumber); 
 
 	// free(database);
-	free(totalResultSetCnt);
-	free(cnt);
-	free(numBatchesEachIndex);
 	free(N);
 	free(batchOffset);
 	free(debug1);
 	free(debug2);
 	free(indexGroupOffset);
+
+	
+
+	for (int i=0; i<GPUSTREAMS; i++){
+		errCode=cudaStreamDestroy(stream[i]);
+		if(errCode != cudaSuccess) {
+		cout << "\nError: destroying stream" << errCode << endl; 
+		}
+	}
+
+	#if MANAGEDMEMORY == 0
+	free(totalResultSetCnt);
+	free(cnt);
+	free(numBatchesEachIndex);
 	free(batchesThatHaveOneMoreForEachGroup);
 	free(batchSizeForEachGroup);
-
 	
 	//free data related to the individual streams for each batch
 	for (int i=0; i<GPUSTREAMS; i++){
@@ -1243,6 +1368,11 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 		cudaFreeHost(pointIDKey[i]);
 		cudaFreeHost(pointInDistValue[i]);
 	}
+	#endif
+
+	#if MANAGEDMEMORY == 1
+	cudaFree(keyValPairs);
+	#endif
 
 
 	double tFreeEnd=omp_get_wtime();
@@ -1251,13 +1381,51 @@ double distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZ
 	// }
 	cout<<"\n** last error at end of fn batches (could be from freeing memory): "<<cudaGetLastError();
 
-	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
-
-	return (tKernelResultsEnd-tKernelResultsStart) - (tendbatchest - tstartbatchest);
-
 }
 
+void constructNeighborTableKeyValueWithPtrs(keyValPair * keyDistPairs, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long int * cnt) {
+	#if STAMP==0
 
+	#pragma omp parallel for num_threads(8)
+	for (unsigned int i=0; i<(*cnt); i++)
+	{
+		pointersToNeighbors[i]=keyDistPairs[i].val;
+	}
+
+
+	std::vector<keyData> uniqueKeyData;
+
+	keyData tmp;
+	tmp.key=keyDistPairs[0].key;
+	tmp.position=0;
+	uniqueKeyData.push_back(tmp);
+
+	//we assign the ith data item when iterating over i+1th data item,
+	//so we go 1 loop iteration beyond the number (*cnt)
+	for (int i=1; i<(*cnt)+1; i++){
+		if (keyDistPairs[i-1].key!=keyDistPairs[i].key){
+			tmp.key=keyDistPairs[i].key;
+			tmp.position=i;
+			uniqueKeyData.push_back(tmp);
+		}
+	}
+
+	printf("\nUnique keys: %lu", uniqueKeyData.size());
+
+	
+	//insert into the neighbor table the values based on the positions of 
+	//the unique keys obtained above. 
+	for (int i=0; i<uniqueKeyData.size()-1; i++) {
+		int keyElem=uniqueKeyData[i].key;
+		neighborTable[keyElem].pointID=keyElem;
+		neighborTable[keyElem].indexmin=uniqueKeyData[i].position;
+		neighborTable[keyElem].indexmax=uniqueKeyData[i+1].position-1;
+	
+		//update the pointer to the data array for the values
+		neighborTable[keyElem].dataPtr=pointersToNeighbors;	
+	}
+	#endif
+}
 
 
 void constructNeighborTableKeyValueWithPtrs(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned int * cnt)
