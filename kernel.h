@@ -46,7 +46,7 @@ __global__ void kernelPairwiseDatabaseRotation( DTYPE * database, const unsigned
 __global__ void kernelNDGridIndexGlobalManagedMemory(unsigned int *debug1, unsigned int *debug2, const unsigned int N,  
 	const unsigned int indexGroupOffset, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
 	struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrEnd, DTYPE* minArr, unsigned int * nCells, 
-	unsigned long long int * cnt, struct keyValPair * keyValPairs, unsigned int * orderedQueryPntIDs, CTYPE* workCounts);
+	unsigned long long int * cnt, struct keyValPair * keyValPairs, unsigned int * orderedQueryPntIDs, CTYPE* workCounts, unsigned int * whichIndexPoints);
 
 __device__	void evaluateCellManagedMemory(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArrStart, 
 	struct gridCellLookup * gridCellLookupArrStartEnd, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, DTYPE* point, 

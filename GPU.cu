@@ -1170,6 +1170,8 @@ void distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE,
 	keyValPair * keyValPairs;
 	gpuErrchk(cudaMallocManaged((void **)&keyValPairs, keyValElementsSize * sizeof(keyValPair)));
 
+	// cudaMemPrefetchAsync(keyValPairs, keyValElementsSize * sizeof(keyValPair), cudaCpuDeviceId);
+
 	/////////////////////////////////
 	//END ALLOCATE FIXED MEMORY FRO KEY VALUE PAIRS
 	////////////////////////////////
@@ -1182,12 +1184,22 @@ void distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE,
 
 	double tstart_kernel = omp_get_wtime();
 
+	/*
 	errCode=cudaDeviceSynchronize();
 	cout <<"\n\nError from device synchronize: "<<errCode;
+	*/
 
-		
+	unsigned int * dev_whichIndexPoints;
+	
+	//Allocate on the device
+	gpuErrchk(cudaMalloc((void**)&dev_whichIndexPoints, sizeof(unsigned int)*(DBSIZE)));
+	//copy to device
+	gpuErrchk(cudaMemcpy( dev_whichIndexPoints, whichIndexPoints, sizeof(unsigned int)*(DBSIZE), cudaMemcpyHostToDevice ));
+
+
 
 	#pragma omp parallel for schedule(static,1) num_threads(GPUSTREAMS)
+	// for(int indexGroup=0; indexGroup<1; indexGroup++) { // first kernel only (for profiling )
 	for(int indexGroup=0; indexGroup<indexGroups->size(); indexGroup++) {
 
 		int tid=omp_get_thread_num();
@@ -1209,6 +1221,8 @@ void distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE,
 
 		unsigned int groupSize = (*indexGroups)[indexGroup].indexmax - (*indexGroups)[indexGroup].indexmin;
 
+		printf("\ntid %d size: %d", tid, groupSize);
+
 		const int TOTALBLOCKS=ceil((1.0*(groupSize))/(1.0*BLOCKSIZE));	
 		printf("\ntotal blocks: %d",TOTALBLOCKS);
 
@@ -1218,7 +1232,7 @@ void distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE,
 		kernelNDGridIndexGlobalManagedMemory<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(dev_debug1, dev_debug2, groupSize, (*indexGroups)[indexGroup].indexmin,
 	dev_database+(whichDatabase * (DBSIZE) * GPUNUMDIM), dev_epsilon, dev_allGrids+gridIncrement, dev_allIndexLookupArr+(whichIndex * (DBSIZE)), 
 	dev_allGridCellLookupArr+gridIncrement, dev_allGridCellLookupArr+gridIncrement+allNNonEmptyCells[whichIndex], dev_allMinArr+(whichIndex * NUMINDEXEDDIM), 
-	dev_allNCells+(whichIndex * NUMINDEXEDDIM), dev_cnt, keyValPairs, dev_orderedQueryPntIDs, dev_workCounts);
+	dev_allNCells+(whichIndex * NUMINDEXEDDIM), dev_cnt, keyValPairs, dev_orderedQueryPntIDs, dev_workCounts, dev_whichIndexPoints);
 
 		// errCode=cudaDeviceSynchronize();
 		// cout <<"\n\nError from device synchronize: "<<errCode;
@@ -1228,12 +1242,11 @@ void distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE,
 			cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
 		}
 
-		errCode=cudaDeviceSynchronize();
-		cout <<"\n\nError from device synchronize: "<<errCode;;
-
-		printf("\nRunning total of total size of result array: %llu", *dev_cnt); 
+		// printf("\nRunning total of total size of result array: %llu", *dev_cnt); 
 	}
 
+	errCode=cudaDeviceSynchronize();
+	cout <<"\n\nError from device synchronize: "<<errCode;
 	
 	double tend_kernel = omp_get_wtime();
 
@@ -1242,7 +1255,7 @@ void distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE,
 	if(keyValElementsSize < *dev_cnt) {
 		fprintf(stderr,"\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n\n");
 	}
-	
+
 	
 	// gnu parallel sort by key 
 	printf("\nSorting pairs...");

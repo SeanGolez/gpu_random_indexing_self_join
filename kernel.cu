@@ -768,7 +768,7 @@ __global__ void kernelPairwiseDatabaseRotation( DTYPE * database, const unsigned
 __global__ void kernelNDGridIndexGlobalManagedMemory(unsigned int *debug1, unsigned int *debug2, const unsigned int N,  
 	const unsigned int indexGroupOffset, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
 	struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrEnd, DTYPE* minArr, unsigned int * nCells, 
-	unsigned long long int * cnt, struct keyValPair * keyValPairs, unsigned int * orderedQueryPntIDs, CTYPE* workCounts)
+	unsigned long long int * cnt, struct keyValPair * keyValPairs, unsigned int * orderedQueryPntIDs, CTYPE* workCounts, unsigned int * whichIndexPoints)
 {
 
 unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE);
@@ -803,6 +803,7 @@ unsigned int pointIdx=tid + indexGroupOffset;
 //The offset into the database, taking into consideration the length of each dimension
 unsigned int pointOffset=(GPUNUMDIM)*pointIdx;
 #endif
+
 
 
 

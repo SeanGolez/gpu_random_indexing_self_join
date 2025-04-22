@@ -489,6 +489,11 @@ int main(int argc, char *argv[])
 			std::sort(indexPoints.begin()+indexGroups[i].indexmin, indexPoints.begin()+indexGroups[i].indexmax, compareIndexArrayByNumDistanceCalcs);
 		}
 
+		for( int i=0; i<indexPoints.size(); i++ ) {
+			orderedQueryPntIDs[i] = indexPoints[i].pntIdx;
+		}
+
+		/*
 		// sort total work
 		std::sort(totalPointsWork.begin(), totalPointsWork.end(), compareIndexArrayByNumDistanceCalcs);
 
@@ -497,10 +502,14 @@ int main(int argc, char *argv[])
 		{
 			orderedQueryPntIDs[i]=totalPointsWork[i].pntIdx;
 		}
+		*/
+	
 	#endif
 
 	// get divider to adjust batches to index size
 	//DTYPE * batchDivider = (DTYPE *)malloc(sizeof(DTYPE) * NUMRANDINDEXES);
+
+
 
 	for(int i=0; i<NUMTOTALINDEXES; i++) {
         unsigned int count = std::count_if(indexPoints.begin(), indexPoints.end(), [&i](const indexArrayPnt& p) {
@@ -566,6 +575,8 @@ int main(int argc, char *argv[])
 	double entire_time_end = omp_get_wtime();
 
 	double tstart = omp_get_wtime();
+
+	// return 0;
 
 	distanceTableNDGridBatches(dev_database, DBSIZE, NUMTOTALINDEXES, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs, whichIndexPoints);
 

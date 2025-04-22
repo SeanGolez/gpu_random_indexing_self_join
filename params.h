@@ -17,13 +17,13 @@
 #define BLOCKSIZE 256
  
 //Number of dimensions of the data (n)
-#define GPUNUMDIM 18
+#define GPUNUMDIM 3
 
 //Number of indexed dimensions (k)
-#define NUMINDEXEDDIM 6
+#define NUMINDEXEDDIM 3
 
 //Number of random indexes to generate (at least 0)
-#define NUMRANDINDEXES 3
+#define NUMRANDINDEXES 0
 
 //Number of random rotations to generate (at least 0)
 #define NUMRANDROTATIONS 0
@@ -83,7 +83,7 @@
 #define SHORTCIRCUIT 1
 
 //Reorder the query points by work
-#define QUERYREORDER 1
+#define QUERYREORDER 1 // NOTE: THIS NEEDS TO BE ON FOR INDEXING TO WORK AT THE MOMENT
 
 //End optimizations
 ///////////////////////
