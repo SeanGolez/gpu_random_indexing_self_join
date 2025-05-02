@@ -1256,6 +1256,8 @@ void distanceTableNDGridBatches(DTYPE * dev_database, const unsigned int DBSIZE,
 		fprintf(stderr,"\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n\n");
 	}
 
+	printf("\nResult set size (GiB): %f", (float)(*dev_cnt * sizeof(keyValPair)) / (1024*1024*1024) );
+
 	
 	// gnu parallel sort by key 
 	printf("\nSorting pairs...");
