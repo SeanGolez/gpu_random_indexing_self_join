@@ -862,12 +862,12 @@ dev_completedArray, dev_countNeighbors);
 	for( unsigned long long int i=0; i < *dev_cnt; i++ ) {
 		sortedKeyValPairs[i].key = dev_pointIDKey[i];
 		sortedKeyValPairs[i].val = dev_pointInDistValue[i];
-		sortedKeyValPairs[i].defined = true
+		sortedKeyValPairs[i].defined = true;
 	}
 	double tend_cpy = omp_get_wtime();
 	fprintf(stderr, "\nData transfer time: %f", tend_cpy-tstart_cpy);
 
-	// This gets killed here for large result set size
+	// Free memory to avoid sort getting killed from exceeding RAM usage
 	cudaFree(dev_pointIDKey);
 	cudaFree(dev_pointInDistValue);
 
@@ -1684,8 +1684,12 @@ void probeAndSort(
 	
 	printf("\n\n");
 
+	// Free memory to avoid sort getting killed from exceeding RAM usage
+	cudaFree(dev_pointIDKey);
+	cudaFree(dev_pointInDistValue);
+
 	//sort buffer
-	fprintf(stderr,"\n[Leftovers] Sorting %lu elements corresponding to query points in the range [%u, %u]", elemsToSort, rangeMin, rangeMax);
+	fprintf(stderr,"\n[Leftovers] Sorting %llu elements corresponding to query points in the range [%u, %u]", (localCnt - elemsLowerBound), rangeMin, rangeMax);
 	double tstart_sort = omp_get_wtime();	
 	__gnu_parallel::sort(bufferToSort, bufferToSort+(localCnt - elemsLowerBound), compareKeyValPairs);
 	double tend_sort = omp_get_wtime();
@@ -1800,8 +1804,6 @@ void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDK
 	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,
 	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound)
 {
-	uint64_t cntOutputBuffer = 0;
-	
 	// for(uint64_t i=0; i<(localCnt) && (cntOutputBuffer<elemsToSort); i++)
 	#pragma omp parallel for num_threads(NCOPYTHREADS)
 	for(uint64_t i=elemsLowerBound; i<localCnt; i++)
@@ -1818,6 +1820,4 @@ void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDK
 			bufferToSort[bufferIdx].defined = false;
 		}
 	}
-
-	fprintf(stderr, "\ncntOutputBuffer = %lu", cntOutputBuffer);
 }
