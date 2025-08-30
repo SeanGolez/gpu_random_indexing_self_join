@@ -53,6 +53,7 @@ struct keyData{
 struct keyValPair{
 	unsigned int key;
 	unsigned int val;
+	bool defined;
 };
 
 

@@ -50,6 +50,13 @@ bool compareWorkArrayByNumPointsInCell(const workArray &a, const workArray &b)
 //sort descending
 bool compareKeyValPairs(const keyValPair& a, const keyValPair& b)
 {
+	if (!a.defined) {
+		return false;
+	}
+	if (!b.defined){
+		return true;
+	}
+
 	return a.key < b.key;
 }
 
@@ -835,7 +842,8 @@ dev_completedArray, dev_countNeighbors);
 	}
 	
 #if PROBEANDSORT==1
-	keyValPair * sortedKeyValPairs = (keyValPair *)malloc(sizeof(keyValPair)*keyValElementsSize);
+	// keyValPair * sortedKeyValPairs = (keyValPair *)malloc(sizeof(keyValPair)*keyValElementsSize);
+	keyValPair * sortedKeyValPairs = new keyValPair[keyValElementsSize];
 	probeAndSort(dev_pointIDKey, dev_pointInDistValue, sortedKeyValPairs, dev_cnt, dev_completedArray, dev_countNeighbors, keyValElementsSize, *DBSIZE);
 #endif
 
@@ -854,6 +862,7 @@ dev_completedArray, dev_countNeighbors);
 	for( unsigned long long int i=0; i < *dev_cnt; i++ ) {
 		sortedKeyValPairs[i].key = dev_pointIDKey[i];
 		sortedKeyValPairs[i].val = dev_pointInDistValue[i];
+		sortedKeyValPairs[i].defined = true
 	}
 	double tend_cpy = omp_get_wtime();
 	fprintf(stderr, "\nData transfer time: %f", tend_cpy-tstart_cpy);
@@ -1665,7 +1674,8 @@ void probeAndSort(
 	//Prefetch last chunk of unsortedBuffer to CPU memory
 	cudaMemPrefetchAsync(&unsortedBuffer[elemsLowerBound], sizeof(unsigned int)*maxUnsortedNELEMS, cudaCpuDeviceId, 0);
 	#endif
-	double tstart_cpy = omp_get_wtime();	
+	double tstart_cpy = omp_get_wtime();
+	fprintf(stderr, "\nlocalCnt - elemsLowerBound = %llu", localCnt - elemsLowerBound);
 	parallelCopyToBuffer(bufferToSort, dev_pointIDKey, dev_pointInDistValue, elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
 	double tend_cpy = omp_get_wtime();
 	fprintf(stderr, "\n[Leftovers] Data transfer time: %f", tend_cpy-tstart_cpy);
@@ -1677,7 +1687,7 @@ void probeAndSort(
 	//sort buffer
 	fprintf(stderr,"\n[Leftovers] Sorting %lu elements corresponding to query points in the range [%u, %u]", elemsToSort, rangeMin, rangeMax);
 	double tstart_sort = omp_get_wtime();	
-	__gnu_parallel::sort(bufferToSort, bufferToSort+elemsToSort, compareKeyValPairs);
+	__gnu_parallel::sort(bufferToSort, bufferToSort+(localCnt - elemsLowerBound), compareKeyValPairs);
 	double tend_sort = omp_get_wtime();
 	fprintf(stderr, "\n[Leftovers] Sort time: %f", tend_sort-tstart_sort);
 
@@ -1743,15 +1753,18 @@ uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsi
 	
 	bool flagElemsLowerBound = 0;
 	uint64_t copiedContiguousElemsLowerBound = elemsLowerBound;
+
+	fprintf(stderr,"\nelemsLowerBound: %lu", elemsLowerBound);
+	fprintf(stderr,"\nlocalCnt: %llu", localCnt);
 	
 	// for(uint64_t i=0; i<(localCnt) && (cntOutputBuffer<elemsToSort); i++)
 	for(uint64_t i=elemsLowerBound; i<localCnt && (cntOutputBuffer<elemsToSort); i++)
 	{
-
 		if(dev_pointIDKey[i]>=rangeMin && dev_pointIDKey[i]<rangeMax)
 		{
 			bufferToSort[cntOutputBuffer].key = dev_pointIDKey[i];
 			bufferToSort[cntOutputBuffer].val = dev_pointInDistValue[i];
+			bufferToSort[cntOutputBuffer].defined = true;
 			cntOutputBuffer++;
 
 			//if the flag has not been set
@@ -1759,6 +1772,12 @@ uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsi
 				copiedContiguousElemsLowerBound = i;
 			}
 		}
+		/*
+		else
+		{
+			fprintf(stderr,"\nDid not copy: %lu: %d", i, dev_pointIDKey[i]);
+		}
+		*/
 		
 		//if an element exceeds rangeMax then we need to set the flag
 		//because we need to go back and start from that index on a future iteration
@@ -1775,6 +1794,8 @@ uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsi
 	return copiedContiguousElemsLowerBound;
 }
 
+// Copy over points in range to the same indexes in the buffer
+// undefined elements will be pushed to the end of the array during sort, then cut off
 void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDKey,
 	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,
 	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound)
@@ -1782,15 +1803,21 @@ void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDK
 	uint64_t cntOutputBuffer = 0;
 	
 	// for(uint64_t i=0; i<(localCnt) && (cntOutputBuffer<elemsToSort); i++)
+	#pragma omp parallel for num_threads(NCOPYTHREADS)
 	for(uint64_t i=elemsLowerBound; i<localCnt; i++)
 	{
-		if( cntOutputBuffer<elemsToSort ) {
-			if(dev_pointIDKey[i]>=rangeMin && dev_pointIDKey[i]<rangeMax)
-			{	
-				bufferToSort[cntOutputBuffer].key = dev_pointIDKey[i];
-				bufferToSort[cntOutputBuffer].val = dev_pointInDistValue[i];
-				cntOutputBuffer++;
-			}
+		uint64_t bufferIdx = i - elemsLowerBound;
+		if(dev_pointIDKey[i]>=rangeMin && dev_pointIDKey[i]<rangeMax)
+		{	
+			bufferToSort[bufferIdx].key = dev_pointIDKey[i];
+			bufferToSort[bufferIdx].val = dev_pointInDistValue[i];
+			bufferToSort[bufferIdx].defined = true;
+		}
+		else
+		{
+			bufferToSort[bufferIdx].defined = false;
 		}
 	}
+
+	fprintf(stderr, "\ncntOutputBuffer = %lu", cntOutputBuffer);
 }

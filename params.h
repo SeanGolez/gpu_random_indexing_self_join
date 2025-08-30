@@ -96,7 +96,7 @@
 ///////////////////////
 
 // Number of bytes to allocate for key value pairs in GiB
-#define KEYVALUEMEM 210
+#define KEYVALUEMEM 100
 
 //probe-and-sort
 #define PROBEANDSORT 1 //0 sort everything in unified memory at the end
