@@ -816,6 +816,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	const int TOTALBLOCKS=ceil((1.0*(*DBSIZE))/(1.0*BLOCKSIZE));	
 	printf("\ntotal blocks: %d",TOTALBLOCKS);
 
+	double tstart_kernel = omp_get_wtime();
+
 	cudaDeviceSynchronize();
 
 	//execute kernel	
@@ -840,6 +842,8 @@ dev_completedArray, dev_countNeighbors);
 #endif
 
 	cudaDeviceSynchronize();
+	double tend_kernel = omp_get_wtime();
+	printf("\nKernel execution time: %f", (tend_kernel - tstart_kernel));
 	fprintf(stderr,"\nTotal of total size of result array: %llu", *dev_cnt);
 	printf("\n[After synchronization] Num elems generated in array (Fraction: %f): %llu", *dev_cnt*1.0/keyValElementsSize*1.0, *dev_cnt);
 	if(keyValElementsSize < *dev_cnt) {
