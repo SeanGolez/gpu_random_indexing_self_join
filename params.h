@@ -99,7 +99,7 @@
 #define KEYVALUEMEM 100
 
 //probe-and-sort
-#define PROBEANDSORT 1 //0 sort everything in unified memory at the end
+#define PROBEANDSORT 0 //0 sort everything in unified memory at the end
 					   //1 do probe-and-sort
 					   //-1 no sorting at all (as a baseline)
 

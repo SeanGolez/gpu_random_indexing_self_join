@@ -16,8 +16,12 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, D
 	unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, unsigned int * dev_gridCellNDMask, 
 	unsigned int * dev_gridCellNDMaskOffsets, unsigned int * dev_nNDMaskElems, unsigned int * dev_orderedQueryPntIDs, unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
 
-void constructNeighborTableKeyValueWithPtrs(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned int * cnt);
+
+void constructNeighborTableKeyValueWithPtrs(unsigned int * pointIDKey, unsigned int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long * cnt);
 void constructNeighborTableKeyValueWithPtrs(keyValPair * keyDistPairs, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long int * cnt);
+void constructNeighborTableKeyValueWithPtrs(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned int * cnt);
+
+
 
 void warmUpGPU();
 
@@ -73,5 +77,5 @@ uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsi
 	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound);
 
 void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDKey,
-	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,
+	unsigned int * dev_pointInDistValue, unsigned long long int localCnt,
 	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound);

@@ -19,6 +19,9 @@
 #include <thrust/device_ptr.h>
 #include <thrust/system/cuda/execution_policy.h> //for streams for thrust (added with Thrust v1.8)
 
+//cub
+#include <cub/cub.cuh>
+
 
 //for warming up GPU:
 #include <thrust/copy.h>
@@ -825,6 +828,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 	cudaDeviceSynchronize();
 
+	double tstart_kernel = omp_get_wtime();
+
 	//execute kernel	
 	//0 is shared memory pool
 	kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream>>>(dev_debug1, dev_debug2, *DBSIZE, 
@@ -848,6 +853,8 @@ dev_completedArray, dev_countNeighbors);
 #endif
 
 	cudaDeviceSynchronize();
+	double tend_kernel = omp_get_wtime();
+	fprintf(stderr, "\nKernel execution time: %f", (tend_kernel - tstart_kernel));
 	fprintf(stderr,"\nTotal of total size of result array: %llu", *dev_cnt);
 	printf("\n[After synchronization] Num elems generated in array (Fraction: %f): %llu", *dev_cnt*1.0/keyValElementsSize*1.0, *dev_cnt);
 	if(keyValElementsSize < *dev_cnt) {
@@ -855,27 +862,30 @@ dev_completedArray, dev_countNeighbors);
 	}
 
 #if PROBEANDSORT==0
-	// gnu parallel sort by key 
-	keyValPair * sortedKeyValPairs = new keyValPair[*dev_cnt];
-	double tstart_cpy = omp_get_wtime();
-	#pragma omp parallel for num_threads(NCOPYTHREADS)
-	for( unsigned long long int i=0; i < *dev_cnt; i++ ) {
-		sortedKeyValPairs[i].key = dev_pointIDKey[i];
-		sortedKeyValPairs[i].val = dev_pointInDistValue[i];
-		sortedKeyValPairs[i].defined = true;
-	}
-	double tend_cpy = omp_get_wtime();
-	fprintf(stderr, "\nData transfer time: %f", tend_cpy-tstart_cpy);
-
-	// Free memory to avoid sort getting killed from exceeding RAM usage
-	cudaFree(dev_pointIDKey);
-	cudaFree(dev_pointInDistValue);
-
-	double tstart_sort = omp_get_wtime();
 	fprintf(stderr, "\nSorting pairs...");
-	__gnu_parallel::sort(sortedKeyValPairs, sortedKeyValPairs+*dev_cnt, compareKeyValPairs);
+	double tstart_sort = omp_get_wtime();
+	
+	/* This is giving thrust::system::detail::bad_alloc
+	thrust::sort_by_key(thrust::device, dev_pointIDKey, dev_pointIDKey + *dev_cnt, dev_pointInDistValue);
+	*/
+
+	// Determine temporary device storage requirements
+	void *d_temp_storage = nullptr;
+	size_t temp_storage_bytes = 0;
+	cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
+		dev_pointIDKey, dev_pointIDKey, dev_pointInDistValue, dev_pointInDistValue, *dev_cnt);
+
+	// Allocate temporary storage
+	cudaMalloc(&d_temp_storage, temp_storage_bytes);
+
+	// Run sorting operation
+	cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
+		dev_pointIDKey, dev_pointIDKey, dev_pointInDistValue, dev_pointInDistValue, *dev_cnt);
+
+	cudaDeviceSynchronize();
+
 	double tend_sort = omp_get_wtime();
-	printf("\nSort time: %f", (tend_sort - tstart_sort));
+	fprintf(stderr, "\nSort time: %f", (tend_sort - tstart_sort));
 #endif
 
 	
@@ -884,12 +894,10 @@ dev_completedArray, dev_countNeighbors);
 	double tableconstuctstart=omp_get_wtime();
 	//set the number of neighbors in the pointer struct:
 	tmpStruct.sizeOfDataArr=*dev_cnt;    
-	tmpStruct.dataPtr=new int[*dev_cnt]; // NOTE: Do not frees this from memory until program is finished
+	tmpStruct.dataPtr=new int[*dev_cnt]; // NOTE: Do not free this from memory until program is finished
 
+	constructNeighborTableKeyValueWithPtrs(dev_pointIDKey, dev_pointInDistValue, neighborTable, tmpStruct.dataPtr, dev_cnt);
 
-	constructNeighborTableKeyValueWithPtrs(sortedKeyValPairs, neighborTable, tmpStruct.dataPtr, dev_cnt);
-	
-	
 	double tableconstuctend=omp_get_wtime();	
 	
 	printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
@@ -979,7 +987,7 @@ dev_completedArray, dev_countNeighbors);
 	}
 	*/
 #if PROBEANDSORT!=-1
-	delete[] sortedKeyValPairs;
+	// delete[] sortedKeyValPairs;
 #endif
 
 
@@ -991,7 +999,53 @@ dev_completedArray, dev_countNeighbors);
 
 }
 
+// construct neightbor table using managed memory key val pair arrays
+void constructNeighborTableKeyValueWithPtrs(unsigned int * pointIDKey, unsigned int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long * cnt)
+{
+	#if STAMP==0
 
+	#pragma omp parallel for num_threads(8)
+	for (unsigned int i=0; i<(*cnt); i++)
+	{
+		pointersToNeighbors[i]=pointInDistValue[i];
+	}
+
+
+	std::vector<keyData> uniqueKeyData;
+
+	keyData tmp;
+	tmp.key=pointIDKey[0];
+	tmp.position=0;
+	uniqueKeyData.push_back(tmp);
+
+	//we assign the ith data item when iterating over i+1th data item,
+	//so we go 1 loop iteration beyond the number (*cnt)
+	for (int i=1; i<(*cnt)+1; i++){
+		if (pointIDKey[i-1]!=pointIDKey[i]){
+			tmp.key=pointIDKey[i];
+			tmp.position=i;
+			uniqueKeyData.push_back(tmp);
+		}
+	}
+
+	printf("\nUnique keys: %lu", uniqueKeyData.size());
+
+	
+	//insert into the neighbor table the values based on the positions of 
+	//the unique keys obtained above. 
+	for (int i=0; i<uniqueKeyData.size()-1; i++) {
+		int keyElem=uniqueKeyData[i].key;
+		neighborTable[keyElem].pointID=keyElem;
+		neighborTable[keyElem].indexmin=uniqueKeyData[i].position;
+		neighborTable[keyElem].indexmax=uniqueKeyData[i+1].position-1;
+	
+		//update the pointer to the data array for the values
+		neighborTable[keyElem].dataPtr=pointersToNeighbors;	
+	}
+	#endif
+	}
+
+// construct neightbor table using sorted keyValPain struct array
 void constructNeighborTableKeyValueWithPtrs(keyValPair * keyDistPairs, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long int * cnt) {
 	#if STAMP==0
 
@@ -1036,7 +1090,7 @@ void constructNeighborTableKeyValueWithPtrs(keyValPair * keyDistPairs, struct ne
 	#endif
 }
 
-
+// original construct neightbor table function
 void constructNeighborTableKeyValueWithPtrs(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned int * cnt)
 {
 	#if STAMP==0
@@ -1674,9 +1728,9 @@ void probeAndSort(
 	//Prefetch last chunk of unsortedBuffer to CPU memory
 	cudaMemPrefetchAsync(&unsortedBuffer[elemsLowerBound], sizeof(unsigned int)*maxUnsortedNELEMS, cudaCpuDeviceId, 0);
 	#endif
+	fprintf(stderr, "\n[Leftovers]localCnt - elemsLowerBound = %llu", localCnt - elemsLowerBound);
 	double tstart_cpy = omp_get_wtime();
-	fprintf(stderr, "\nlocalCnt - elemsLowerBound = %llu", localCnt - elemsLowerBound);
-	parallelCopyToBuffer(bufferToSort, dev_pointIDKey, dev_pointInDistValue, elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
+	parallelCopyToBuffer(bufferToSort, dev_pointIDKey, dev_pointInDistValue, localCnt, rangeMin, rangeMax, elemsLowerBound);
 	double tend_cpy = omp_get_wtime();
 	fprintf(stderr, "\n[Leftovers] Data transfer time: %f", tend_cpy-tstart_cpy);
 
@@ -1801,7 +1855,7 @@ uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsi
 // Copy over points in range to the same indexes in the buffer
 // undefined elements will be pushed to the end of the array during sort, then cut off
 void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDKey,
-	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,
+	unsigned int * dev_pointInDistValue, unsigned long long int localCnt,
 	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound)
 {
 	// for(uint64_t i=0; i<(localCnt) && (cntOutputBuffer<elemsToSort); i++)
