@@ -79,3 +79,6 @@ uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsi
 void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDKey,
 	unsigned int * dev_pointInDistValue, unsigned long long int localCnt,
 	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound);
+
+
+int bitCount(unsigned int n);

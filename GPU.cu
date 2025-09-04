@@ -861,7 +861,26 @@ dev_completedArray, dev_countNeighbors);
 		cout << "\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n" << endl;
 	}
 
+/*
+printf("\nBefore\n");
+for( int i=0; i<100; i++ ) {
+	printf("%d,", dev_pointIDKey[i]);
+}
+printf("\n");
+for( int i=0; i<100; i++ ) {
+	printf("%d,", dev_pointInDistValue[i]);
+}
+printf("\n");
+*/
+
+fprintf(stderr, "\nbitCount: %d", bitCount(*DBSIZE));
+
 #if PROBEANDSORT==0
+	unsigned int * dev_sortedPointIDKey;
+	unsigned int * dev_sortedPointInDistValue;
+	gpuErrchk(cudaMallocManaged((void **)&dev_sortedPointIDKey, (*dev_cnt) * sizeof(unsigned int)));
+	gpuErrchk(cudaMallocManaged((void **)&dev_sortedPointInDistValue, (*dev_cnt) * sizeof(unsigned int)));
+
 	fprintf(stderr, "\nSorting pairs...");
 	double tstart_sort = omp_get_wtime();
 	
@@ -873,22 +892,34 @@ dev_completedArray, dev_countNeighbors);
 	void *d_temp_storage = nullptr;
 	size_t temp_storage_bytes = 0;
 	cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
-		dev_pointIDKey, dev_pointIDKey, dev_pointInDistValue, dev_pointInDistValue, *dev_cnt);
+		dev_pointIDKey, dev_sortedPointIDKey, dev_pointInDistValue, dev_sortedPointInDistValue, *dev_cnt, 0, bitCount(*DBSIZE));
 
 	// Allocate temporary storage
 	cudaMalloc(&d_temp_storage, temp_storage_bytes);
 
 	// Run sorting operation
 	cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
-		dev_pointIDKey, dev_pointIDKey, dev_pointInDistValue, dev_pointInDistValue, *dev_cnt);
-
+		dev_pointIDKey, dev_sortedPointIDKey, dev_pointInDistValue, dev_sortedPointInDistValue, *dev_cnt, 0, bitCount(*DBSIZE));
+		
 	cudaDeviceSynchronize();
-
 	double tend_sort = omp_get_wtime();
 	fprintf(stderr, "\nSort time: %f", (tend_sort - tstart_sort));
+	
+	/*
+	printf("\nAfter\n");
+	for( int i=0; i<100; i++ ) {
+		printf("%d,", dev_sortedPointIDKey[i]);
+	}
+	printf("\n");
+	for( int i=0; i<100; i++ ) {
+		printf("%d,", dev_sortedPointInDistValue[i]);
+	}
+	printf("\n");
+	*/
+
 #endif
 
-	
+
 
 #if PROBEANDSORT==0 || PROBEANDSORT==1
 	double tableconstuctstart=omp_get_wtime();
@@ -896,7 +927,7 @@ dev_completedArray, dev_countNeighbors);
 	tmpStruct.sizeOfDataArr=*dev_cnt;    
 	tmpStruct.dataPtr=new int[*dev_cnt]; // NOTE: Do not free this from memory until program is finished
 
-	constructNeighborTableKeyValueWithPtrs(dev_pointIDKey, dev_pointInDistValue, neighborTable, tmpStruct.dataPtr, dev_cnt);
+	constructNeighborTableKeyValueWithPtrs(dev_sortedPointIDKey, dev_sortedPointInDistValue, neighborTable, tmpStruct.dataPtr, dev_cnt);
 
 	double tableconstuctend=omp_get_wtime();	
 	
@@ -986,8 +1017,15 @@ dev_completedArray, dev_countNeighbors);
 		cudaFreeHost(pointInDistValue[i]);
 	}
 	*/
+
+	cudaFree(dev_pointIDKey);
+	cudaFree(dev_pointInDistValue);
+
 #if PROBEANDSORT!=-1
+	cudaFree(dev_sortedPointIDKey);
+	cudaFree(dev_sortedPointInDistValue);
 	// delete[] sortedKeyValPairs;
+	cudaFree(d_temp_storage);
 #endif
 
 
@@ -1875,3 +1913,12 @@ void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDK
 		}
 	}
 }
+
+int bitCount(unsigned int n) {
+    int counter = 0;
+    while(n) {
+        counter++;
+        n >>= 1;
+    }
+    return counter;
+ }
