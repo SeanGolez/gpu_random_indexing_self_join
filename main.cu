@@ -556,7 +556,7 @@ void printNeighborTable(unsigned int databaseSize, struct neighborTableLookup * 
 	for (int i=0; i<databaseSize; i++){
 		//sort to have increasing point IDs
 		std::sort(neighborTable[i].dataPtr+neighborTable[i].indexmin,neighborTable[i].dataPtr+neighborTable[i].indexmax+1);
-		for (int j=neighborTable[i].indexmin; j<=neighborTable[i].indexmax; j++){
+		for (unsigned long long int j=neighborTable[i].indexmin; j<=neighborTable[i].indexmax; j++){
 			DSSJ_out<<neighborTable[i].dataPtr[j]<<", ";
 		}
 		DSSJ_out<<"\n";

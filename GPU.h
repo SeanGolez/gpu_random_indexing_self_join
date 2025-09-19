@@ -82,3 +82,5 @@ void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDK
 
 
 int bitCount(unsigned int n);
+
+bool compareKeyValPairs(const keyValPair& a, const keyValPair& b);

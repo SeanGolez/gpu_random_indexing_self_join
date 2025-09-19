@@ -96,8 +96,9 @@
 ///////////////////////
 
 // Number of bytes to allocate for key value pairs in GiB
-#define KEYVALUEMEM 100
+#define KEYVALUEMEM 75
 
+//////////////////////////
 //probe-and-sort
 #define PROBEANDSORT 0 //0 sort everything in unified memory at the end
 					   //1 do probe-and-sort
@@ -105,8 +106,10 @@
 
 #define SLEEPSEC 2 //Number of seconds to wait until probing the count produced on the GPU
 #define FRACTIONTHREADSCOMPLETE 0.05 //this is used as a threshold to determine when to sort on the CPU
-//end probe-and-sort
 
+#define GPUSORT 1 // sort on gpu after kernel is finished, otherwise parallel cpu sort
+//end probe-and-sort
+//////////////////////////
 
 //////////////////////////
 //parallel CPU parameters for OpenMP

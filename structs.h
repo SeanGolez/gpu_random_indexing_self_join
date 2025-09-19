@@ -44,7 +44,7 @@ struct dim_reorder_sort
 
 struct keyData{
 		int key;
-		int position;
+		unsigned long long int position;
 };
 
 
@@ -53,7 +53,6 @@ struct keyData{
 struct keyValPair{
 	unsigned int key;
 	unsigned int val;
-	bool defined;
 };
 
 
@@ -65,8 +64,8 @@ struct neighborTableLookup
 {
 	#if STAMP==0
 	int pointID;
-	int indexmin;
-	int indexmax;
+	unsigned long long int indexmin;
+	unsigned long long int indexmax;
 	int * dataPtr;
 	#endif
 	// std::vector<int>neighbors;

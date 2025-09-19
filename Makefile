@@ -6,9 +6,9 @@
 #Build binaries for the code in the paper
 #see params.h for the parameters
 
-SOURCES = main.cu GPU.cu kernel.cu import_dataset.cpp tree_index.cpp 
+SOURCES = main.cu GPU.cu kernel.cu import_dataset.cpp tree_index.cpp gpu_sort.cu
 OBJECTS = import_dataset.o tree_index.o 
-CUDAOBJECTS = GPU.o kernel.o main.o
+CUDAOBJECTS = GPU.o kernel.o main.o gpu_sort.o
 CC = nvcc
 EXECUTABLE = main
 
@@ -19,7 +19,7 @@ COMPUTE_CAPABILITY = 75
 COMPUTE_CAPABILITY_FLAGS = -arch=compute_$(COMPUTE_CAPABILITY) -code=sm_$(COMPUTE_CAPABILITY)
 
 
-FLAGS = -std=c++14 -O3 -Xcompiler -fopenmp -lcuda -lineinfo 
+FLAGS = -std=c++14 -O3 -Xcompiler -fopenmp -lcuda -lineinfo -ltbb
 CFLAGS = -c -D_MWAITXINTRIN_H_INCLUDED -D_FORCE_INLINES
 
 
@@ -40,7 +40,10 @@ kernel.o: kernel.cu params.h
 	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) kernel.cu 		
 
 GPU.o: GPU.cu params.h
-	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) GPU.cu 	
+	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) GPU.cu
+
+gpu_sort.o: gpu_sort.cu params.h
+	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) gpu_sort.cu
 
 
 
