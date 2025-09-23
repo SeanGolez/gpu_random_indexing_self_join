@@ -17,6 +17,7 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, D
 	unsigned int * dev_gridCellNDMaskOffsets, unsigned int * dev_nNDMaskElems, unsigned int * dev_orderedQueryPntIDs, unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
 
 
+void constructNeighborTableKeyValueWithPtrs(std::map<unsigned int, unsigned int> &keyValPairs, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long * cnt);
 void constructNeighborTableKeyValueWithPtrs(unsigned int * pointIDKey, unsigned int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long * cnt);
 void constructNeighborTableKeyValueWithPtrs(keyValPair * keyDistPairs, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long int * cnt);
 void constructNeighborTableKeyValueWithPtrs(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned int * cnt);
@@ -50,35 +51,3 @@ void constructNeighborTableKeyValueWithPtrsBatchMaskArray(int * pointIDKey, int 
 void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index);
 
 void bubbleSortByKey(int * keysPtr, int * valsPtr, unsigned long long int size);
-
-void hostUniqueKeys(keyValPair * keyValPairs, unsigned long long int * size, keyValPair * uniqueKeyPosPairs, unsigned long long int * uniqueCnt);
-
-
-// probe-and-sort functions
-void probeAndSort(
-	unsigned int * dev_pointIDKey,
-	unsigned int * dev_pointInDistValue,
-	keyValPair * sortedKeyValPairs,
-	unsigned long long int * cnt,
-	bool * completedArray,
-	unsigned int *	countNeighbors,
-	const unsigned long long int maxUnsortedNELEMS, 
-	const unsigned int numElemsCompletedArray 
-	);
-
-bool allComplete(bool * completedArray, unsigned int offSetComplete, const unsigned int numElemsCompletedArray);
-
-bool checkQueriesComplete(bool * completedArray, unsigned int offSetComplete, const unsigned int numElemsCompletedArray, const unsigned int NCOMPLETETHRESH);
-
-uint64_t computeElemsToSort(unsigned int * countNeighbors, unsigned int offSetComplete, const unsigned int numElemsCompletedArray, const unsigned int NCOMPLETETHRESH);
-
-uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsigned int * dev_pointIDKey,
-	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,
-	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound);
-
-void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDKey,
-	unsigned int * dev_pointInDistValue, unsigned long long int localCnt,
-	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound);
-
-
-int bitCount(unsigned int n);

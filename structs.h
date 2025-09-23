@@ -3,6 +3,7 @@
 #ifndef STRUCTS_H
 #define STRUCTS_H
 #include <vector>
+#include <map>
 #include <stdio.h>
 #include <iostream>
 
