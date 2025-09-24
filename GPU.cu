@@ -692,7 +692,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//allocate on the device
 	cudaMallocManaged(&dev_cnt, sizeof(unsigned long long int));
 	cudaMemset(dev_cnt, 0, sizeof(unsigned long long int));
-	cudaMemPrefetchAsync(dev_cnt, sizeof(unsigned long long int), cudaCpuDeviceId);
+	
 
 	///////////////////////////////////
 	//END COUNT VALUES -- RESULT SET SIZE FOR EACH KERNEL INVOCATION
@@ -704,14 +704,17 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//ALLOCATE MEMORY FOR THE RESULT SET USING THE BATCH ESTIMATOR
 	///////////////////////////////////
 
-	unsigned int * dev_pointIDKey; //key
-	unsigned int * dev_pointInDistValue; //value
+	// unsigned int * dev_pointIDKey; //key
+	// unsigned int * dev_pointInDistValue; //value
 
 	size_t keyValElementsSize = ((size_t)(KEYVALUEMEM / 2) * (1024 * 1024 * 1024)) / sizeof(unsigned int);
 	printf("\nNumber of allocated key value pairs: %zu", keyValElementsSize);
 	
-	gpuErrchk(cudaMallocManaged((void **)&dev_pointIDKey, keyValElementsSize * sizeof(unsigned int)));
-	gpuErrchk(cudaMallocManaged((void **)&dev_pointInDistValue, keyValElementsSize * sizeof(unsigned int)));
+	// gpuErrchk(cudaMallocManaged((void **)&dev_pointIDKey, keyValElementsSize * sizeof(unsigned int)));
+	// gpuErrchk(cudaMallocManaged((void **)&dev_pointInDistValue, keyValElementsSize * sizeof(unsigned int)));
+	
+	keyValPair * dev_keyValPairs;
+	gpuErrchk(cudaMallocManaged((void **)&dev_keyValPairs, keyValElementsSize * sizeof(keyValPair)));
 
 	//HOST RESULT ALLOCATION FOR THE GPU TO COPY THE DATA INTO A PINNED MEMORY ALLOCATION
 	//ON THE HOST
@@ -818,14 +821,12 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 	double tstart_kernel = omp_get_wtime();
 
-	cudaDeviceSynchronize();
-
 	//execute kernel	
 	//0 is shared memory pool
 	kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream>>>(dev_debug1, dev_debug2, *DBSIZE, 
 dev_offset, dev_batchNumber, dev_database, dev_epsilon, dev_grid, dev_indexLookupArr, 
 dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt, dev_nNonEmptyCells, dev_gridCellNDMask, 
-dev_gridCellNDMaskOffsets, dev_pointIDKey, dev_pointInDistValue, dev_orderedQueryPntIDs, dev_workCounts,
+dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCounts,
 dev_completedArray, dev_countNeighbors);
 
 	// errCode=cudaDeviceSynchronize();
@@ -837,8 +838,7 @@ dev_completedArray, dev_countNeighbors);
 	}
 	
 #if PROBEANDSORT==1
-	keyValPair * sortedKeyValPairs = (keyValPair *)malloc(sizeof(keyValPair)*keyValElementsSize);
-	probeAndSort(dev_pointIDKey, dev_pointInDistValue, sortedKeyValPairs, dev_cnt, dev_completedArray, dev_countNeighbors, keyValElementsSize, *DBSIZE);
+	probeAndSort(dev_keyValPairs, dev_cnt, dev_completedArray, dev_countNeighbors, keyValElementsSize, *DBSIZE);
 #endif
 
 	cudaDeviceSynchronize();
@@ -852,23 +852,9 @@ dev_completedArray, dev_countNeighbors);
 
 #if PROBEANDSORT==0
 	// gnu parallel sort by key 
-	keyValPair * sortedKeyValPairs = new keyValPair[*dev_cnt];
-	double tstart_cpy = omp_get_wtime();
-	#pragma omp parallel for num_threads(NCOPYTHREADS)
-	for( unsigned long long int i=0; i < *dev_cnt; i++ ) {
-		sortedKeyValPairs[i].key = dev_pointIDKey[i];
-		sortedKeyValPairs[i].val = dev_pointInDistValue[i];
-	}
-	double tend_cpy = omp_get_wtime();
-	fprintf(stderr, "\nData transfer time: %f", tend_cpy-tstart_cpy);
-
-	// This gets killed here for large result set size
-	cudaFree(dev_pointIDKey);
-	cudaFree(dev_pointInDistValue);
-
 	double tstart_sort = omp_get_wtime();
 	fprintf(stderr, "\nSorting pairs...");
-	__gnu_parallel::sort(sortedKeyValPairs, sortedKeyValPairs+*dev_cnt, compareKeyValPairs);
+	__gnu_parallel::sort(dev_keyValPairs, dev_keyValPairs+*dev_cnt, compareKeyValPairs);
 	double tend_sort = omp_get_wtime();
 	printf("\nSort time: %f", (tend_sort - tstart_sort));
 #endif
@@ -882,7 +868,7 @@ dev_completedArray, dev_countNeighbors);
 	tmpStruct.dataPtr=new int[*dev_cnt]; // NOTE: Do not frees this from memory until program is finished
 
 
-	constructNeighborTableKeyValueWithPtrs(sortedKeyValPairs, neighborTable, tmpStruct.dataPtr, dev_cnt);
+	constructNeighborTableKeyValueWithPtrs(dev_keyValPairs, neighborTable, tmpStruct.dataPtr, dev_cnt);
 	
 	
 	double tableconstuctend=omp_get_wtime();	
@@ -973,9 +959,6 @@ dev_completedArray, dev_countNeighbors);
 		cudaFreeHost(pointInDistValue[i]);
 	}
 	*/
-#if PROBEANDSORT!=-1
-	delete[] sortedKeyValPairs;
-#endif
 
 
 	double tFreeEnd=omp_get_wtime();
@@ -987,30 +970,35 @@ dev_completedArray, dev_countNeighbors);
 }
 
 
-void constructNeighborTableKeyValueWithPtrs(keyValPair * keyDistPairs, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long int * cnt) {
+void constructNeighborTableKeyValueWithPtrs(keyValPair * keyValPairs, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long int * cnt) {
 	#if STAMP==0
 
 	#pragma omp parallel for num_threads(8)
 	for (unsigned int i=0; i<(*cnt); i++)
 	{
-		pointersToNeighbors[i]=keyDistPairs[i].val;
+		pointersToNeighbors[i]=keyValPairs[i].val;
 	}
 
 
 	std::vector<keyData> uniqueKeyData;
 
 	keyData tmp;
-	tmp.key=keyDistPairs[0].key;
+	tmp.key=keyValPairs[0].key;
 	tmp.position=0;
 	uniqueKeyData.push_back(tmp);
 
 	//we assign the ith data item when iterating over i+1th data item,
 	//so we go 1 loop iteration beyond the number (*cnt)
-	for (int i=1; i<(*cnt)+1; i++){
-		if (keyDistPairs[i-1].key!=keyDistPairs[i].key){
-			tmp.key=keyDistPairs[i].key;
+	for (unsigned long long i=1; i<(*cnt)+1; i++){
+		if (keyValPairs[i-1].key!=keyValPairs[i].key){
+			tmp.key=keyValPairs[i].key;
 			tmp.position=i;
 			uniqueKeyData.push_back(tmp);
+		}
+		if ( i < (*cnt) && keyValPairs[i-1].key>keyValPairs[i].key ) {
+			printf("\nERROR: The key-value pairs are not sorted correctly. Exiting table construction. "
+				   "\nFound an instance of %d coming before %d at indexes %llu and %llu respectively", keyValPairs[i-1].key, keyValPairs[i].key, i-1, i);
+			return;
 		}
 	}
 
@@ -1513,9 +1501,7 @@ void hostUniqueKeys(keyValPair * keyValPairs, unsigned long long int * size, key
 
 
 void probeAndSort(
-	unsigned int * dev_pointIDKey,
-	unsigned int * dev_pointInDistValue,
-	keyValPair * sortedKeyValPairs,
+	keyValPair * keyValPairs,
 	unsigned long long int * cnt,
 	bool * completedArray,
 	unsigned int *	countNeighbors,
@@ -1525,11 +1511,11 @@ void probeAndSort(
 {
 
 	//offset into output sorted buffer
-	uint64_t idxOffset = 0;	
+	// uint64_t idxOffset = 0;	
 	//For clarity bufferToSort is just a pointer to the output array,
 	//so we don't allocate unneeded memory and perform unnecessary memory copies.
 	//But bufferToSort points to the location that needs to be sorted next
-	keyValPair * bufferToSort = &sortedKeyValPairs[idxOffset];
+	// keyValPair * bufferToSort = &keyValPairs[idxOffset];
 
 	//Should only probe-and-sort if the size of the array 
 	//is using significant GPU memory
@@ -1539,6 +1525,11 @@ void probeAndSort(
 	unsigned int NCOMPLETETHRESH = BLOCKSIZE*((FRACTIONTHREADSCOMPLETE*numElemsCompletedArray*1.0)/(BLOCKSIZE*1.0));
 	printf("\nNCOMPLETETHRESH: %u", NCOMPLETETHRESH);
 	// unsigned int NCOMPLETETHRESH = BLOCKSIZE*1000;
+
+	// get the number of elements in one page
+	unsigned int elemsPerPage = ((PAGESIZE) * (1024)) / sizeof(unsigned int);
+	printf("\nelemsPerPage: %u", elemsPerPage);
+
 	unsigned int offSetComplete = 0;
 
 	//Range of the "point ids" to read from the unsorted array:
@@ -1553,8 +1544,10 @@ void probeAndSort(
 	uint64_t totalSortedElems = 0;
 
 	//used to short circuit the scan when copying elements from
-	//unsorted buffer to a temp buffer for sorting
+	//unsorted buffer to a temp buffer for sorting;
 	uint64_t elemsLowerBound = 0;
+	// uint64_t elemsContinguousLowerBound = 0;
+	uint64_t elemsUpperBound = 0;
 
 	//probe until we can sort some of the elements
 	bool ret = 0;
@@ -1568,7 +1561,7 @@ void probeAndSort(
 	while(totalSortedElems<maxUnsortedNELEMS && localCnt<maxUnsortedNELEMS && !allComplete(completedArray, offSetComplete, numElemsCompletedArray))
 	{
 
-		bufferToSort = &sortedKeyValPairs[idxOffset];
+		// bufferToSort = &keyValPairs[idxOffset];
 
 		//sleep for SLEEPSEC seconds
 		//don't want to probe too much or else we'll cause too many page faults
@@ -1591,55 +1584,76 @@ void probeAndSort(
 		
 		if(ret==1)
 		{
-		printf("\nretTrueIteration: %u", retTrueIteration);
+			printf("\nretTrueIteration: %u", retTrueIteration);
 
-		uint64_t elemsToSort = computeElemsToSort(countNeighbors, offSetComplete, numElemsCompletedArray, NCOMPLETETHRESH);	
-		// uint64_t elemsToSort = computeElemsToSortAsFraction(countNeighbors, offSetComplete, numElemsCompletedArray, FRACTIONTHREADSCOMPLETE);	
-		printf("\nElems to sort: %lu", elemsToSort);		
+			uint64_t elemsToSort = computeElemsToSort(countNeighbors, offSetComplete, numElemsCompletedArray, NCOMPLETETHRESH);	
+			// uint64_t elemsToSort = computeElemsToSortAsFraction(countNeighbors, offSetComplete, numElemsCompletedArray, FRACTIONTHREADSCOMPLETE);	
+			printf("\nElems to sort: %lu", elemsToSort);	
+
+			// tmp_elemsLowerBound = elemsContinguousLowerBound;
+			// tmp_elemsContinguousLowerBound = getCopiedContiguousElemsLowerBound(keyValPairs, elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound, tmp_elemsUpperBound);
+
+			//Range of the "point ids" to read from the unsorted array:
+
+			//original
+			rangeMin = offSetComplete;
+			rangeMax = min(numElemsCompletedArray, offSetComplete+NCOMPLETETHRESH);
+
+			// GET UPPER BOUND
+			elemsUpperBound = getElemsUpperBound(keyValPairs, elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
+			
+			// printf("\nelemsLowerBound: %lu\nelemsUpperBound: %lu", elemsLowerBound, elemsUpperBound);
+
+			// check if the kernel is finished writting to the page
+			unsigned int elemsToSortPageIdx = (elemsUpperBound + elemsPerPage - 1) / (elemsPerPage);
+			unsigned int cntPageIdx = (localCnt + elemsPerPage - 1) / (elemsPerPage);
+			printf("\nelemsToSortPageIdx: %d\ncntPageIdx: %d", elemsToSortPageIdx, cntPageIdx);
+			if( elemsToSortPageIdx < cntPageIdx )
+			{
+				// elemsLowerBound = tmp_elemsLowerBound;
+				// elemsContinguousLowerBound = tmp_elemsContinguousLowerBound;
+				// elemsUpperBound = tmp_elemsUpperBound;
+				//printf("\nelemsLowerBound: %lu\nelemsUpperBound: %lu", elemsLowerBound, elemsUpperBound);
+
+				//when using the fraction of work
+				//TODO: return rangeMin/rangeMax using computeElemsToSortAsFraction above 
+				// rangeMin = offSetComplete;
+				// rangeMax = min((unsigned int)numElemsCompletedArray, (unsigned int)offSetComplete+(unsigned int)(numElemsCompletedArray*FRACTIONTHREADSCOMPLETE));
+				
+				//copy unsorted elems to bufferToSort using a scan
+				cntOutputBuffer = 0;
+
+				#if PREFETCH==1
+				//Prefetch chunk of unsortedBuffer to CPU memory
+				cudaMemPrefetchAsync(&unsortedBuffer[elemsLowerBound], sizeof(unsigned int)*localCnt, cudaCpuDeviceId, 0);
+				#endif
+
+				
+				//sort buffer FROM LOWER BOUND TO UPPERBOUND
+				printf("\nSorting %lu elements in bounds [%lu, %lu) corresponding to query points in the range [%u, %u)", 
+																	elemsToSort, elemsLowerBound, elemsUpperBound, rangeMin, rangeMax);
+				double tstart_sort = omp_get_wtime();
+				__gnu_parallel::sort(keyValPairs+elemsLowerBound, keyValPairs+elemsUpperBound, compareKeyValPairs);
+				double tend_sort = omp_get_wtime();
+				printf("\nSort time: %f", tend_sort-tstart_sort);
 
 
-		
-		//Range of the "point ids" to read from the unsorted array:
+				// GET THE NEXT LOWER BOUND (CURRENT LOWER BOUND + NUM ELEMS)
+				elemsLowerBound += elemsToSort;
 
-		//original
-		rangeMin = offSetComplete;
-		rangeMax = min(numElemsCompletedArray, offSetComplete+NCOMPLETETHRESH);
+				//increase offset for output array
+				// idxOffset+=elemsToSort;
+				
+				//increase offset
+				offSetComplete+=NCOMPLETETHRESH;
 
-		//when using the fraction of work
-		//TODO: return rangeMin/rangeMax using computeElemsToSortAsFraction above 
-		// rangeMin = offSetComplete;
-		// rangeMax = min((unsigned int)numElemsCompletedArray, (unsigned int)offSetComplete+(unsigned int)(numElemsCompletedArray*FRACTIONTHREADSCOMPLETE));
-		
-		//copy unsorted elems to bufferToSort using a scan
-		cntOutputBuffer = 0;
+				//increment total sorted elements
+				totalSortedElems+=elemsToSort;
 
-		#if PREFETCH==1
-		//Prefetch chunk of unsortedBuffer to CPU memory
-		cudaMemPrefetchAsync(&unsortedBuffer[elemsLowerBound], sizeof(unsigned int)*localCnt, cudaCpuDeviceId, 0);
-		#endif
+				printf("\nTotal sorted elements: %lu (frac: %f)", totalSortedElems, (totalSortedElems*1.0)/(maxUnsortedNELEMS*1.0));
 
-		elemsLowerBound = sequentialCopyToBufferOutputLowerBound(bufferToSort, dev_pointIDKey, dev_pointInDistValue, 
-			elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
-
-		printf("\nelemsLowerBound (after function): %lu", elemsLowerBound);
-		
-		//sort buffer
-		printf("\nSorting %lu elements corresponding to query points in the range [%u, %u)", elemsToSort, rangeMin, rangeMax);
-		__gnu_parallel::sort(bufferToSort, bufferToSort+elemsToSort, compareKeyValPairs);
-
-		//increase offset for output array
-		idxOffset+=elemsToSort;
-		
-		//increase offset
-		offSetComplete+=NCOMPLETETHRESH;
-
-		//increment total sorted elements
-		totalSortedElems+=elemsToSort;
-
-		printf("\nTotal sorted elements: %lu (frac: %f)", totalSortedElems, (totalSortedElems*1.0)/(maxUnsortedNELEMS*1.0));
-
-		retTrueIteration++;
-
+				retTrueIteration++;
+			}
 		}
 
 			
@@ -1648,14 +1662,14 @@ void probeAndSort(
 	//////////////////////////
 	//Sort the "leftovers" that were not sorted above
 
-	bufferToSort = &sortedKeyValPairs[idxOffset];
+	// bufferToSort = &sortedKeyValPairs[idxOffset];
 
 	localCnt = *cnt;
 
-	NCOMPLETETHRESH = numElemsCompletedArray;
+	NCOMPLETETHRESH = numElemsCompletedArray; // get the rest of the elements in the array
 
 	// uint64_t prefixSumSize=0;
-	uint64_t elemsToSort = computeElemsToSort(countNeighbors, offSetComplete, numElemsCompletedArray, NCOMPLETETHRESH);	
+	uint64_t elemsToSort = computeElemsToSort(countNeighbors, offSetComplete, numElemsCompletedArray, NCOMPLETETHRESH);
 	
 	// unsigned int * bufferToSort = (unsigned int*)malloc(sizeof(unsigned int)*(elemsToSort));
 	fprintf(stderr,"\n[Leftovers] Elems to sort: %lu", elemsToSort);
@@ -1663,30 +1677,39 @@ void probeAndSort(
 	//Range of the "point ids" to read from the unsorted array:
 	rangeMin = offSetComplete;
 	rangeMax = numElemsCompletedArray;
+
+	// elemsLowerBound = elemsContinguousLowerBound;
+	// elemsContinguousLowerBound = getCopiedContiguousElemsLowerBound(keyValPairs, elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound, elemsUpperBound);
+	// printf("\n[Leftovers] elemsLowerBound: %lu\n[Leftovers] elemsUpperBound: %lu", elemsLowerBound, elemsUpperBound);	
 	
+	// SET UPPERBOUND TO ARRAY END
+	elemsUpperBound = localCnt;
+	// elemsUpperBound = getElemsUpperBound(keyValPairs, elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
 
 	#if PREFETCH==1
 	//Prefetch last chunk of unsortedBuffer to CPU memory
 	cudaMemPrefetchAsync(&unsortedBuffer[elemsLowerBound], sizeof(unsigned int)*maxUnsortedNELEMS, cudaCpuDeviceId, 0);
 	#endif
-	double tstart_cpy = omp_get_wtime();	
-	parallelCopyToBuffer(bufferToSort, dev_pointIDKey, dev_pointInDistValue, elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
-	double tend_cpy = omp_get_wtime();
-	fprintf(stderr, "\n[Leftovers] Data transfer time: %f", tend_cpy-tstart_cpy);
+
+	// double tstart_cpy = omp_get_wtime();	
+	// parallelCopyToBuffer(bufferToSort, dev_pointIDKey, dev_pointInDistValue, elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
+	// double tend_cpy = omp_get_wtime();
+	// fprintf(stderr, "\n[Leftovers] Data transfer time: %f", tend_cpy-tstart_cpy);
 
 	fprintf(stderr,"\n[Leftovers] cntOutputBuffer: %lu", cntOutputBuffer);
 	
 	printf("\n\n");
 
 	//sort buffer
-	fprintf(stderr,"\n[Leftovers] Sorting %lu elements corresponding to query points in the range [%u, %u]", elemsToSort, rangeMin, rangeMax);
+	printf("\nSorting %lu elements in bounds [%lu, %lu) corresponding to query points in the range [%u, %u)", 
+														elemsToSort, elemsLowerBound, elemsUpperBound, rangeMin, rangeMax);
 	double tstart_sort = omp_get_wtime();	
-	__gnu_parallel::sort(bufferToSort, bufferToSort+elemsToSort, compareKeyValPairs);
+	__gnu_parallel::sort(keyValPairs+elemsLowerBound, keyValPairs+elemsUpperBound, compareKeyValPairs);
 	double tend_sort = omp_get_wtime();
 	fprintf(stderr, "\n[Leftovers] Sort time: %f", tend_sort-tstart_sort);
 
-	uint64_t lastIdxArray = idxOffset+elemsToSort;
-	fprintf(stderr, "\n[Leftovers] Last idx: %lu (should be NELEMS)", lastIdxArray);
+	// uint64_t lastIdxArray = idxOffset+elemsToSort;
+	fprintf(stderr, "\n[Leftovers] Last idx: %lu (should be NELEMS)", elemsUpperBound);
 
 }
 
@@ -1734,6 +1757,78 @@ uint64_t computeElemsToSort(unsigned int * countNeighbors, unsigned int offSetCo
 	}
 
 	return numElemsToSort;
+}
+
+
+uint64_t getElemsUpperBound(keyValPair * keyValPairs,
+	uint64_t elemsToSort, unsigned long long int localCnt,
+	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound)
+{
+	uint64_t cntOutputBuffer = 0;
+	uint64_t elemsUpperBound = 0;
+	
+	// for(uint64_t i=0; i<(localCnt) && (cntOutputBuffer<elemsToSort); i++)
+	for(uint64_t i=elemsLowerBound; i<localCnt && (cntOutputBuffer<elemsToSort); i++)
+	{
+		if(keyValPairs[i].key>=rangeMin && keyValPairs[i].key<rangeMax)
+		{
+			cntOutputBuffer++;
+		}
+		
+		// update upper bound
+		elemsUpperBound = i;
+	}
+
+	elemsUpperBound += 1;
+
+	// printf("\ncntOutputBuffer: %lu", cntOutputBuffer);
+
+	return elemsUpperBound;
+}
+
+
+//Only count the number of elements that have already been copied in unsortedBuffer
+// I believe this could be parallelized
+uint64_t getCopiedContiguousElemsLowerBound(keyValPair * keyValPairs,
+	uint64_t elemsToSort, unsigned long long int localCnt,
+	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound, uint64_t& elemsUpperBound)
+{
+	uint64_t cntOutputBuffer = 0;
+	
+	bool flagElemsLowerBound = 0;
+	uint64_t copiedContiguousElemsLowerBound = elemsLowerBound;
+	
+	// for(uint64_t i=0; i<(localCnt) && (cntOutputBuffer<elemsToSort); i++)
+	for(uint64_t i=elemsLowerBound; i<localCnt && (cntOutputBuffer<elemsToSort); i++)
+	{
+
+		if(keyValPairs[i].key>=rangeMin && keyValPairs[i].key<rangeMax)
+		{
+			// bufferToSort[cntOutputBuffer].key = dev_pointIDKey[i];
+			// bufferToSort[cntOutputBuffer].val = dev_pointInDistValue[i];
+			cntOutputBuffer++;
+
+			//if the flag has not been set
+			if(flagElemsLowerBound==0){
+				copiedContiguousElemsLowerBound = i;
+			}
+		}
+		
+		//if an element exceeds rangeMax then we need to set the flag
+		//because we need to go back and start from that index on a future iteration
+		if(flagElemsLowerBound!=1 && keyValPairs[i].key>=rangeMax){
+			flagElemsLowerBound = 1;
+		}
+
+		// update upper bound
+		elemsUpperBound = i;
+	}
+
+	elemsUpperBound += 1;
+
+	// printf("\nIn function copiedContiguousElemsLowerBound: %lu", copiedContiguousElemsLowerBound);
+
+	return copiedContiguousElemsLowerBound;
 }
 
 

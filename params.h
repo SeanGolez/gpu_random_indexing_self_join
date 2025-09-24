@@ -104,6 +104,9 @@
 					   //-1 no sorting at all (as a baseline)
 
 #define SLEEPSEC 2 //Number of seconds to wait until probing the count produced on the GPU
+
+#define PAGESIZE 4 //Unified Memory page size (in KiB)
+
 #define FRACTIONTHREADSCOMPLETE 0.05 //this is used as a threshold to determine when to sort on the CPU
 //end probe-and-sort
 

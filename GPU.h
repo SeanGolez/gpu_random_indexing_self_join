@@ -17,7 +17,7 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, D
 	unsigned int * dev_gridCellNDMaskOffsets, unsigned int * dev_nNDMaskElems, unsigned int * dev_orderedQueryPntIDs, unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
 
 void constructNeighborTableKeyValueWithPtrs(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned int * cnt);
-void constructNeighborTableKeyValueWithPtrs(keyValPair * keyDistPairs, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long int * cnt);
+void constructNeighborTableKeyValueWithPtrs(keyValPair * keyValPairs, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned long long int * cnt);
 
 void warmUpGPU();
 
@@ -52,9 +52,7 @@ void hostUniqueKeys(keyValPair * keyValPairs, unsigned long long int * size, key
 
 // probe-and-sort functions
 void probeAndSort(
-	unsigned int * dev_pointIDKey,
-	unsigned int * dev_pointInDistValue,
-	keyValPair * sortedKeyValPairs,
+	keyValPair * keyValPairs,
 	unsigned long long int * cnt,
 	bool * completedArray,
 	unsigned int *	countNeighbors,
@@ -67,6 +65,14 @@ bool allComplete(bool * completedArray, unsigned int offSetComplete, const unsig
 bool checkQueriesComplete(bool * completedArray, unsigned int offSetComplete, const unsigned int numElemsCompletedArray, const unsigned int NCOMPLETETHRESH);
 
 uint64_t computeElemsToSort(unsigned int * countNeighbors, unsigned int offSetComplete, const unsigned int numElemsCompletedArray, const unsigned int NCOMPLETETHRESH);
+
+uint64_t getElemsUpperBound(keyValPair * keyValPairs,
+	uint64_t elemsToSort, unsigned long long int localCnt,
+	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound);
+
+uint64_t getCopiedContiguousElemsLowerBound(keyValPair * keyValPairs,
+	uint64_t elemsToSort, unsigned long long int localCnt,
+	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound, uint64_t& elemsUpperBound);
 
 uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsigned int * dev_pointIDKey,
 	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,

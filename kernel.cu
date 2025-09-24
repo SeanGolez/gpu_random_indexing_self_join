@@ -133,7 +133,7 @@ __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debu
 	unsigned int * offset, unsigned int *batchNum, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
 	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned long long int * cnt, 
 	unsigned int * nNonEmptyCells,  unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets,
-	unsigned int * pointIDKey, unsigned int * pointInDistVal, unsigned int * orderedQueryPntIDs, CTYPE* workCounts,
+	struct keyValPair * keyValPairs, unsigned int * orderedQueryPntIDs, CTYPE* workCounts,
 	bool * completedArray, unsigned int * countNeighbor)
 {
 
@@ -304,7 +304,7 @@ bool foundMax=0;
 	for (int x=0; x<NUMINDEXEDDIM; x++){
 	indexes[x]=loopRng[x];	
 	}
-		evaluateCell(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, index, indexLookupArr, point, cnt, pointIDKey, pointInDistVal, pointIdx, false, nDCellIDs, workCounts, &localCnt);
+		evaluateCell(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, index, indexLookupArr, point, cnt, keyValPairs, pointIdx, false, nDCellIDs, workCounts, &localCnt);
 	
 	} //end loop body
 #endif
@@ -313,7 +313,7 @@ bool foundMax=0;
 	completedArray[tid] = 1;
 }
 
-__forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* epsilon, DTYPE* point, unsigned long long int* cnt, unsigned int* pointIDKey, unsigned int* pointInDistVal, int pointIdx, bool differentCell, unsigned int * localCnt) {
+__forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* epsilon, DTYPE* point, unsigned long long int* cnt, struct keyValPair * keyValPairs, int pointIdx, bool differentCell, unsigned int * localCnt) {
 	
 	unsigned int dataIdx=indexLookupArr[k];
 
@@ -374,21 +374,21 @@ __forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, D
         #endif
 		  (*localCnt) += 1;
           unsigned long long int idx=atomicAdd(cnt,1ULL);
-          pointIDKey[idx]=pointIdx;
-          pointInDistVal[idx]=dataIdx;
+          keyValPairs[idx].key=pointIdx;
+          keyValPairs[idx].val=dataIdx;
 
             if(differentCell) {
 			  (*localCnt) += 1;
               unsigned long long int idx = atomicAdd(cnt,1ULL);
-              pointIDKey[idx]=pointIdx;
-              pointInDistVal[idx]=dataIdx;
+              keyValPairs[idx].key=pointIdx;
+        	  keyValPairs[idx].val=dataIdx;
            }
 	}
 }
 
 
 
-__device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, unsigned int* nNonEmptyCells, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, DTYPE* point, unsigned long long int* cnt, unsigned int* pointIDKey, unsigned int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts, unsigned int * localCnt) {
+__device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, unsigned int* nNonEmptyCells, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, DTYPE* point, unsigned long long int* cnt, struct keyValPair * keyValPairs, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts, unsigned int * localCnt) {
 
 
 #if COUNTMETRICS == 1
@@ -479,7 +479,7 @@ __device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct
 // Brute force method if SORTED != 1
 #else
 	for (int k=index[GridIndex].indexmin; k<=index[GridIndex].indexmax; k++){
-		evalPoint(indexLookupArr, k, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell, localCnt);
+		evalPoint(indexLookupArr, k, database, epsilon, point, cnt, keyValPairs, pointIdx, differentCell, localCnt);
 #if COUNTMETRICS == 1
 			atomicAdd(&workCounts[0],1);
 #endif
