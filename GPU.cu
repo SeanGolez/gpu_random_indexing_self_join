@@ -819,7 +819,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	const int TOTALBLOCKS=ceil((1.0*(*DBSIZE))/(1.0*BLOCKSIZE));	
 	printf("\ntotal blocks: %d",TOTALBLOCKS);
 
-	double tstart_kernel = omp_get_wtime();
+	cudaEvent_t kernelStart;
+	cudaEvent_t kernelStop;
+    cudaEventCreate(&kernelStart);
+	cudaEventCreate(&kernelStop);
+
+	// double tstart_kernel = omp_get_wtime();
+
+	cudaEventRecord(kernelStart, stream);
 
 	//execute kernel	
 	//0 is shared memory pool
@@ -828,6 +835,8 @@ dev_offset, dev_batchNumber, dev_database, dev_epsilon, dev_grid, dev_indexLooku
 dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt, dev_nNonEmptyCells, dev_gridCellNDMask, 
 dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCounts,
 dev_completedArray, dev_countNeighbors);
+
+	cudaEventRecord(kernelStop, stream);
 
 	// errCode=cudaDeviceSynchronize();
 	// cout <<"\n\nError from device synchronize: "<<errCode;
@@ -841,14 +850,18 @@ dev_completedArray, dev_countNeighbors);
 	probeAndSort(dev_keyValPairs, dev_cnt, dev_completedArray, dev_countNeighbors, keyValElementsSize, *DBSIZE);
 #endif
 
-	cudaDeviceSynchronize();
-	double tend_kernel = omp_get_wtime();
-	printf("\nKernel execution time: %f", (tend_kernel - tstart_kernel));
+	cudaEventSynchronize(kernelStop);
+	// double tend_kernel = omp_get_wtime();
+	float milliseconds;
+	cudaEventElapsedTime(&milliseconds, kernelStart, kernelStop);
+	printf("\nKernel execution time: %f", (milliseconds / 1000));
 	fprintf(stderr,"\nTotal of total size of result array: %llu", *dev_cnt);
 	printf("\n[After synchronization] Num elems generated in array (Fraction: %f): %llu", *dev_cnt*1.0/keyValElementsSize*1.0, *dev_cnt);
 	if(keyValElementsSize < *dev_cnt) {
 		cout << "\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n" << endl;
 	}
+	cudaEventDestroy(kernelStart);
+	cudaEventDestroy(kernelStop);
 
 #if PROBEANDSORT==0
 	// gnu parallel sort by key 
