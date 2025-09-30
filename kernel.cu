@@ -309,8 +309,10 @@ bool foundMax=0;
 	} //end loop body
 #endif
 
+	#if PROBEANDSORT==1	
 	countNeighbor[tid] = localCnt;
 	completedArray[tid] = 1;
+	#endif
 }
 
 __forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* epsilon, DTYPE* point, unsigned long long int* cnt, struct keyValPair * keyValPairs, int pointIdx, bool differentCell, unsigned int * localCnt) {
@@ -372,13 +374,17 @@ __forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, D
         #if ILP==0
         if (sqrt(runningTotalDist)<=(*epsilon)){	
         #endif
-		  (*localCnt) += 1;
+			#if PROBEANDSORT==1	
+		  	(*localCnt) += 1;
+		  	#endif
           unsigned long long int idx=atomicAdd(cnt,1ULL);
           keyValPairs[idx].key=pointIdx;
           keyValPairs[idx].val=dataIdx;
 
             if(differentCell) {
-			  (*localCnt) += 1;
+				#if PROBEANDSORT==1	
+				(*localCnt) += 1;
+				#endif
               unsigned long long int idx = atomicAdd(cnt,1ULL);
               keyValPairs[idx].key=pointIdx;
         	  keyValPairs[idx].val=dataIdx;

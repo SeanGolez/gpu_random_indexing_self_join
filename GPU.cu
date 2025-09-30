@@ -755,19 +755,22 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//END SET OPENMP ENVIRONMENT VARIABLES
 	////////////////////////////////
 	*/
-	
-	//Each thread that processes a "query" point will set this to be true if it has completed
-	bool * dev_completedArray;
+
+//Each thread that processes a "query" point will set this to be true if it has completed
+bool * dev_completedArray = NULL;
+
+//counters for all query points (the number of points within epsilon of it)
+unsigned int * dev_countNeighbors = NULL;
+
+#if PROBEANDSORT==1	
 	gpuErrchk(cudaMallocManaged(&dev_completedArray, sizeof(bool)*(*DBSIZE)));
 	//init to 0
 	memset(dev_completedArray, 0, sizeof(bool)*(*DBSIZE));
 
-	//counters for all query points (the number of points within epsilon of it)
-	unsigned int * dev_countNeighbors;
 	gpuErrchk(cudaMallocManaged(&dev_countNeighbors, sizeof(unsigned int)*(*DBSIZE)));
 	//init to 0
 	memset(dev_countNeighbors, 0, sizeof(unsigned int)*(*DBSIZE));
-	
+#endif	
 
 	/////////////////////////////////
 	//CREATE STREAMS
