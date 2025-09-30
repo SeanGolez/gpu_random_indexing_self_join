@@ -17,10 +17,10 @@
 #define BLOCKSIZE 256
  
 //Number of dimensions of the data (n)
-#define GPUNUMDIM 3
+#define GPUNUMDIM 18
 
 //Number of indexed dimensions (k)
-#define NUMINDEXEDDIM 3
+#define NUMINDEXEDDIM 6
 
 //data type of the input dataset (float or double)
 #define DTYPE float
@@ -99,7 +99,7 @@
 #define KEYVALUEMEM 210
 
 //probe-and-sort
-#define PROBEANDSORT 1 //0 sort everything in unified memory at the end
+#define PROBEANDSORT 0 //0 sort everything in unified memory at the end
 					   //1 do probe-and-sort
 					   //-1 no sorting at all (as a baseline)
 
