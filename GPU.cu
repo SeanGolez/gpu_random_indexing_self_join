@@ -815,27 +815,51 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 #if PROBEANDSORT==0
 	double tstart_kernel = omp_get_wtime();
 
+	//Each thread that processes a "query" point will set this to be true if it has completed
+	bool * dev_completedArray;
+	gpuErrchk(cudaMallocManaged(&dev_completedArray, sizeof(bool)*(*DBSIZE)));
+	//init to 0
+	memset(dev_completedArray, 0, sizeof(bool)*(*DBSIZE));
+
+	//counters for all query points (the number of points within epsilon of it)
+	unsigned int * dev_countNeighbors;
+	gpuErrchk(cudaMallocManaged(&dev_countNeighbors, sizeof(unsigned int)*(*DBSIZE)));
+	//init to 0
+	memset(dev_countNeighbors, 0, sizeof(unsigned int)*(*DBSIZE));
+
+	cudaEvent_t kernelStart;
+	cudaEvent_t kernelStop;
+    cudaEventCreate(&kernelStart);
+	cudaEventCreate(&kernelStop);
+
+	cudaEventRecord(kernelStart, stream);
 	kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream>>>(dev_debug1, dev_debug2, *DBSIZE, 
 dev_offset, dev_batchNumber, dev_database, dev_epsilon, dev_grid, dev_indexLookupArr, 
 dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt, dev_nNonEmptyCells, dev_gridCellNDMask, 
-dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCounts);
+dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCounts,
+dev_completedArray, dev_countNeighbors);
+	cudaEventRecord(kernelStop, stream);
+
+	// errCode=cudaDeviceSynchronize();
+	// cout <<"\n\nError from device synchronize: "<<errCode;
 
 	cout <<"\n\nKERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
 	if ( cudaSuccess != cudaGetLastError() ){
 		cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
 	}
 
-	cudaDeviceSynchronize();
-
-	double tend_kernel = omp_get_wtime();
-
-	printf("\nKernel execution time: %f", (tend_kernel - tstart_kernel));
-
+	cudaEventSynchronize(kernelStop);
+	// double tend_kernel = omp_get_wtime();
+	float milliseconds;
+	cudaEventElapsedTime(&milliseconds, kernelStart, kernelStop);
+	printf("\nKernel execution time: %f", (milliseconds / 1000));
 	fprintf(stderr,"\nTotal of total size of result array: %llu", *dev_cnt);
-
+	printf("\n[After synchronization] Num elems generated in array (Fraction: %f): %llu", *dev_cnt*1.0/keyValElementsSize*1.0, *dev_cnt);
 	if(keyValElementsSize < *dev_cnt) {
-		fprintf(stderr,"\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n\n");
+		cout << "\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n" << endl;
 	}
+	cudaEventDestroy(kernelStart);
+	cudaEventDestroy(kernelStop);
 
 
 	// gnu parallel sort by key 
