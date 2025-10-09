@@ -17,10 +17,10 @@
 #define BLOCKSIZE 256
  
 //Number of dimensions of the data (n)
-#define GPUNUMDIM 18
+#define GPUNUMDIM 3
 
 //Number of indexed dimensions (k)
-#define NUMINDEXEDDIM 6
+#define NUMINDEXEDDIM 3
 
 //data type of the input dataset (float or double)
 #define DTYPE float
@@ -30,6 +30,8 @@
 //Utility
 //used for outputting the neighbortable at the end
 #define PRINTNEIGHBORTABLE 0
+
+#define NEIGHTBORTABLESORTED 1 // if PROBEANDSORT==1, set this to 1 for neighbor table output to be sorted
 ///////////////////////
 
 
@@ -57,7 +59,7 @@
 #define SHORTCIRCUIT 1
 
 //Reorder the query points by work
-#define QUERYREORDER 0 //note: Keep this off for probe-and-sort
+#define QUERYREORDER 1
 
 //End optimizations
 ///////////////////////
@@ -99,7 +101,7 @@
 #define KEYVALUEMEM 210
 
 //probe-and-sort
-#define PROBEANDSORT 0 //0 sort everything in unified memory at the end
+#define PROBEANDSORT 1 //0 sort everything in unified memory at the end
 					   //1 do probe-and-sort
 					   //-1 no sorting at all (as a baseline)
 
@@ -108,6 +110,9 @@
 #define PAGESIZE 4 //Unified Memory page size (in KiB)
 
 #define FRACTIONTHREADSCOMPLETE 0.05 //this is used as a threshold to determine when to sort on the CPU
+
+
+// #define NPAGESTHRESH 10000
 //end probe-and-sort
 
 

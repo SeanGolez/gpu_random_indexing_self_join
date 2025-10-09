@@ -232,8 +232,18 @@ int main(int argc, char *argv[])
 	
 
 	//Neighbortable storage -- the result
-	neighborTableLookup * neighborTable= new neighborTableLookup[NDdataPoints.size()];
+	neighborTableLookup * neighborTable = NULL;
 	std::vector<struct neighborDataPtrs> pointersToNeighbors;
+#if PROBEANDSORT==0	
+	neighborTable= new neighborTableLookup[NDdataPoints.size()];
+#endif
+#if PROBEANDSORT==1
+	// map for "neighbor table"
+	unordered_map<unsigned int, vector<struct keyValBin>> keyBinsMap;
+#endif
+
+	// managed memory key value pairs array
+	keyValPair * keyValPairs = NULL;
 
 	CTYPE* workCounts = (CTYPE*)malloc(2*sizeof(CTYPE));
 	workCounts[0]=0;
@@ -245,7 +255,8 @@ int main(int argc, char *argv[])
 
 	double tstart=omp_get_wtime();	
 
-	distanceTableNDGridBatches(&NDdataPoints, &epsilon, index, gridCellLookupArr, &nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, workCounts);
+	distanceTableNDGridBatches(&NDdataPoints, &epsilon, index, gridCellLookupArr, &nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, 
+		&pointersToNeighbors, &totalNeighbors, gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, workCounts, &keyValPairs, &keyBinsMap);
 	
 	double tend=omp_get_wtime();
 
@@ -267,6 +278,7 @@ int main(int argc, char *argv[])
 	//Some related neighbortable data are shown below.
 
 	#if PRINTNEIGHBORTABLE==1
+	#if PROBEANDSORT==0
 	#if STAMP==0
 	printNeighborTable(NDdataPoints.size(), neighborTable);
 	// for (int i=0; i<NDdataPoints.size(); i++){
@@ -326,6 +338,52 @@ int main(int argc, char *argv[])
 		}	
 	}
 	#endif //end if stamp==1
+	#endif //end if probeandsort==0
+	#if PROBEANDSORT==1
+	char neighbortablefname[]="DSSJ_out.txt";
+	ofstream DSSJ_out;
+	DSSJ_out.open(neighbortablefname,ios::out);
+
+	printf("\n\nOutputting neighbors to: %s\n", neighbortablefname);
+	DSSJ_out<<"#data point (line is the point id), neighbor point ids\n";
+
+	// fprintf(stderr, "\n%u", dev_keyValPairs[0].val);
+
+	#if NEIGHTBORTABLESORTED==0
+	for (unsigned int i=0; i<NDdataPoints.size(); i++){
+		//sort to have increasing point IDs
+		for(auto bin : keyBinsMap[i] ) {
+			// fprintf(stderr, "\n%u [%llu, %llu): ", i, bin.indexmin, bin.indexmax);
+			for (unsigned long long int j=bin.indexmin; j<bin.indexmax; j++){
+				// fprintf(stderr, "\n%llu", j);
+				DSSJ_out<<keyValPairs[j].val<<", ";
+			}
+		}
+		DSSJ_out<<"\n";
+	}
+	#endif
+	#if NEIGHTBORTABLESORTED==1
+	for (unsigned int i=0; i<NDdataPoints.size(); i++){
+		//sort to have increasing point IDs
+		vector<unsigned int> valuePoints;
+		for(auto bin : keyBinsMap[i] ) {
+			// fprintf(stderr, "\n%u [%llu, %llu): ", i, bin.indexmin, bin.indexmax);
+			for (unsigned long long int j=bin.indexmin; j<bin.indexmax; j++){
+				// fprintf(stderr, "\n%llu", j);
+				valuePoints.push_back(keyValPairs[j].val);
+			}
+		}
+
+		sort(valuePoints.begin(), valuePoints.end());
+		for( auto value : valuePoints ) {
+			DSSJ_out<<value<<", ";
+		}
+		DSSJ_out<<"\n";
+	}
+	#endif
+
+	DSSJ_out.close();
+	#endif //end if probeandsort==1
 	#endif //endif print neighbortable
 
 }

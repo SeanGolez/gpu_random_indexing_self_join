@@ -3,6 +3,7 @@
 #ifndef STRUCTS_H
 #define STRUCTS_H
 #include <vector>
+#include <unordered_map>
 #include <stdio.h>
 #include <iostream>
 
@@ -53,6 +54,12 @@ struct keyData{
 struct keyValPair{
 	unsigned int key;
 	unsigned int val;
+};
+
+
+struct keyValBin{
+	unsigned long long indexmin;
+	unsigned long long indexmax;
 };
 
 

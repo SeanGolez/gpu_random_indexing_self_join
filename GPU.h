@@ -1,6 +1,8 @@
 #include "structs.h"
 #include "params.h"
 
+#include <unordered_map>
+#include <vector>
 
 
 void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPoints, DTYPE* epsilon, struct table * neighborTable, unsigned long long int * totalNeighbors);
@@ -8,7 +10,8 @@ void makeDistanceTableGPUBruteForce(std::vector<std::vector <DTYPE> > * NDdataPo
 void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, struct grid * index, 
 	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
-	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts);
+	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts,
+	keyValPair ** dev_keyValPairs, std::unordered_map<unsigned int, std::vector<struct keyValBin>> * keyBinsMap);
 
 
 unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, DTYPE* dev_epsilon, struct grid * dev_grid, 
@@ -81,3 +84,15 @@ uint64_t sequentialCopyToBufferOutputLowerBound(keyValPair * bufferToSort, 	unsi
 void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDKey,
 	unsigned int * dev_pointInDistValue, uint64_t elemsToSort, unsigned long long int localCnt,
 	unsigned int rangeMin, unsigned int rangeMax, uint64_t elemsLowerBound);
+
+
+
+// version of probe and sort that works with QUERYREORDER=1
+void probeAndSort(
+	keyValPair * keyValPairs,
+	unsigned long long int * cnt,
+	const unsigned long long int maxUnsortedNELEMS, 
+	const unsigned int numElemsCompletedArray,
+	cudaEvent_t * kernelStop,
+	std::unordered_map<unsigned int, std::vector<struct keyValBin>> * keyBinsMap
+	);

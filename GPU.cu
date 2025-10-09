@@ -277,7 +277,8 @@ return estimatedTotalSizeWithAlpha;
 void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, struct grid * index, 
 	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
-	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts)
+	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts,
+	keyValPair ** keyValPairs, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap)
 {
 
 
@@ -658,10 +659,11 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		pointersToNeighbors->push_back(tmpStruct);
 	}
 	*/
-
+#if PROBEANDSORT==0
 	struct neighborDataPtrs tmpStruct;
 	tmpStruct.dataPtr=NULL;
 	tmpStruct.sizeOfDataArr=0;
+#endif
 
 	///////////////////
 	//END ALLOCATE POINTERS TO INTEGER ARRAYS FOR THE VALUES FOR THE NEIGHBORTABLES
@@ -807,26 +809,6 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	printf("\ntotal blocks: %d",TOTALBLOCKS);
 
 	// double tstart_kernel = omp_get_wtime();
-
-
-
-	//execute kernel	
-	//0 is shared memory pool
-#if PROBEANDSORT==0
-	double tstart_kernel = omp_get_wtime();
-
-	//Each thread that processes a "query" point will set this to be true if it has completed
-	bool * dev_completedArray;
-	gpuErrchk(cudaMallocManaged(&dev_completedArray, sizeof(bool)*(*DBSIZE)));
-	//init to 0
-	memset(dev_completedArray, 0, sizeof(bool)*(*DBSIZE));
-
-	//counters for all query points (the number of points within epsilon of it)
-	unsigned int * dev_countNeighbors;
-	gpuErrchk(cudaMallocManaged(&dev_countNeighbors, sizeof(unsigned int)*(*DBSIZE)));
-	//init to 0
-	memset(dev_countNeighbors, 0, sizeof(unsigned int)*(*DBSIZE));
-
 	cudaEvent_t kernelStart;
 	cudaEvent_t kernelStop;
     cudaEventCreate(&kernelStart);
@@ -836,8 +818,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream>>>(dev_debug1, dev_debug2, *DBSIZE, 
 dev_offset, dev_batchNumber, dev_database, dev_epsilon, dev_grid, dev_indexLookupArr, 
 dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt, dev_nNonEmptyCells, dev_gridCellNDMask, 
-dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCounts,
-dev_completedArray, dev_countNeighbors);
+dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCounts);
 	cudaEventRecord(kernelStop, stream);
 
 	// errCode=cudaDeviceSynchronize();
@@ -848,7 +829,12 @@ dev_completedArray, dev_countNeighbors);
 		cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
 	}
 
+#if PROBEANDSORT==1
+	probeAndSort(dev_keyValPairs, dev_cnt, keyValElementsSize, *DBSIZE, &kernelStop, keyBinsMap);
+#endif
+
 	cudaEventSynchronize(kernelStop);
+	
 	// double tend_kernel = omp_get_wtime();
 	float milliseconds;
 	cudaEventElapsedTime(&milliseconds, kernelStart, kernelStop);
@@ -861,7 +847,7 @@ dev_completedArray, dev_countNeighbors);
 	cudaEventDestroy(kernelStart);
 	cudaEventDestroy(kernelStop);
 
-
+#if PROBEANDSORT==0
 	// gnu parallel sort by key 
 	double tstart_sort = omp_get_wtime();
 	fprintf(stderr, "\nSorting pairs...");
@@ -869,70 +855,12 @@ dev_completedArray, dev_countNeighbors);
 	double tend_sort = omp_get_wtime();
 	printf("\nSort time: %f", (tend_sort - tstart_sort));
 
-#endif
-
-
-#if PROBEANDSORT==1
-	//Each thread that processes a "query" point will set this to be true if it has completed
-	bool * dev_completedArray;
-	gpuErrchk(cudaMallocManaged(&dev_completedArray, sizeof(bool)*(*DBSIZE)));
-	//init to 0
-	memset(dev_completedArray, 0, sizeof(bool)*(*DBSIZE));
-
-	//counters for all query points (the number of points within epsilon of it)
-	unsigned int * dev_countNeighbors;
-	gpuErrchk(cudaMallocManaged(&dev_countNeighbors, sizeof(unsigned int)*(*DBSIZE)));
-	//init to 0
-	memset(dev_countNeighbors, 0, sizeof(unsigned int)*(*DBSIZE));
-
-	cudaEvent_t kernelStart;
-	cudaEvent_t kernelStop;
-    cudaEventCreate(&kernelStart);
-	cudaEventCreate(&kernelStop);
-
-	cudaEventRecord(kernelStart, stream);
-	kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream>>>(dev_debug1, dev_debug2, *DBSIZE, 
-dev_offset, dev_batchNumber, dev_database, dev_epsilon, dev_grid, dev_indexLookupArr, 
-dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt, dev_nNonEmptyCells, dev_gridCellNDMask, 
-dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCounts,
-dev_completedArray, dev_countNeighbors);
-	cudaEventRecord(kernelStop, stream);
-
-	// errCode=cudaDeviceSynchronize();
-	// cout <<"\n\nError from device synchronize: "<<errCode;
-
-	cout <<"\n\nKERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
-	if ( cudaSuccess != cudaGetLastError() ){
-		cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
-	}
-	
-	probeAndSort(dev_keyValPairs, dev_cnt, dev_completedArray, dev_countNeighbors, keyValElementsSize, *DBSIZE);
-
-	cudaEventSynchronize(kernelStop);
-	// double tend_kernel = omp_get_wtime();
-	float milliseconds;
-	cudaEventElapsedTime(&milliseconds, kernelStart, kernelStop);
-	printf("\nKernel execution time: %f", (milliseconds / 1000));
-	fprintf(stderr,"\nTotal of total size of result array: %llu", *dev_cnt);
-	printf("\n[After synchronization] Num elems generated in array (Fraction: %f): %llu", *dev_cnt*1.0/keyValElementsSize*1.0, *dev_cnt);
-	if(keyValElementsSize < *dev_cnt) {
-		cout << "\n\nWARNING: Total result set size exceeds elements allocated for key value pairs. Neighbor table will be inaccurate.\n" << endl;
-	}
-	cudaEventDestroy(kernelStart);
-	cudaEventDestroy(kernelStop);
-#endif
-
-	
-
-#if PROBEANDSORT==0 || PROBEANDSORT==1
 	double tableconstuctstart=omp_get_wtime();
 	//set the number of neighbors in the pointer struct:
 	tmpStruct.sizeOfDataArr=*dev_cnt;    
 	tmpStruct.dataPtr=new int[*dev_cnt]; // NOTE: Do not frees this from memory until program is finished
 
-
-	constructNeighborTableKeyValueWithPtrs(dev_keyValPairs, neighborTable, tmpStruct.dataPtr, dev_cnt);
-	
+	constructNeighborTableKeyValueWithPtrs( dev_keyValPairs, neighborTable, tmpStruct.dataPtr, dev_cnt);
 	
 	double tableconstuctend=omp_get_wtime();	
 	
@@ -1023,6 +951,7 @@ dev_completedArray, dev_countNeighbors);
 	}
 	*/
 
+	*keyValPairs = dev_keyValPairs;
 
 	double tFreeEnd=omp_get_wtime();
 
@@ -1954,5 +1883,147 @@ void parallelCopyToBuffer(keyValPair * bufferToSort, unsigned int * dev_pointIDK
 				cntOutputBuffer++;
 			}
 		}
+	}
+}
+
+
+
+
+// version of probe and sort that works with QUERYREORDER=1
+void probeAndSort(
+	keyValPair * keyValPairs,
+	unsigned long long int * cnt,
+	const unsigned long long int maxUnsortedNELEMS, 
+	const unsigned int numElemsCompletedArray,
+	cudaEvent_t * kernelStop,
+	unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap
+	)
+{
+	// set bounds
+	uint64_t lowerBound = 0;
+	uint64_t upperBound = 0;
+
+	// get the number of elements in one page
+	unsigned int elemsPerPage = ((PAGESIZE) * (1024)) / sizeof(unsigned int);
+	printf("\nelemsPerPage: %u", elemsPerPage);
+
+	// keep track of the number of pages sorted
+	unsigned long long int pagesSorted = 0;
+
+	unsigned long long int localCnt;
+	unsigned long long int localPagesIdx;
+
+	keyValBin tempBin;
+
+	// loop while kernel is not complete
+	while( cudaEventQuery(*kernelStop) == cudaErrorNotReady )
+	{
+		// sleep for SLEEPSEC seconds
+		usleep(SLEEPSEC*1000000);
+
+		// read cnt
+		localCnt = *cnt;
+		printf("\nNum elems generated in array on GPU: %llu", localCnt);
+
+		// convert count to pages
+		localPagesIdx = localCnt  / elemsPerPage;
+		printf("\nPage index being updated on GPU: %llu", localPagesIdx);
+
+		// sort up to localPageCnt each time
+
+		// set bounds
+		lowerBound = pagesSorted * elemsPerPage;
+		upperBound = localPagesIdx * elemsPerPage;
+
+		// sort
+		printf("\nSorting %lu elements in bounds [%lu, %lu)", (upperBound-lowerBound), lowerBound, upperBound);
+		double tstart_sort = omp_get_wtime();
+		__gnu_parallel::sort(keyValPairs+lowerBound, keyValPairs+upperBound, compareKeyValPairs);
+		double tend_sort = omp_get_wtime();
+		printf("\nSort time: %f", tend_sort-tstart_sort);
+
+		// create bins
+		tempBin.indexmin = lowerBound;
+		unsigned int currentKey = keyValPairs[lowerBound].key;
+		for( unsigned long long int i=lowerBound+1; i<upperBound; i++ )
+		{
+			if( keyValPairs[i].key != currentKey )
+			{
+				tempBin.indexmax = i;
+
+				// check if key exists in map and initialize/append accordingly
+				auto it = keyBinsMap->find(currentKey);
+				if (it == keyBinsMap->end()) {
+					(*keyBinsMap)[currentKey] = { tempBin };
+				} else {
+					it->second.push_back( tempBin );
+				}
+
+				tempBin.indexmin = i;
+				currentKey = keyValPairs[i].key;
+			}
+		}
+		tempBin.indexmax = upperBound;
+
+		// check if key exists in map and initialize/append accordingly
+		auto it = keyBinsMap->find(currentKey);
+		if (it == keyBinsMap->end()) {
+			(*keyBinsMap)[currentKey] = { tempBin };
+		} else {
+			it->second.push_back( tempBin );
+		}
+
+
+		// update pages sorted count
+		pagesSorted = localPagesIdx;
+	}
+
+	// read cnt
+	localCnt = *cnt;
+	printf("\n[Leftover] Num elems generated in array on GPU: %llu", localCnt);
+
+	// sort up to localPageCnt each time
+
+	// set bounds
+	lowerBound = pagesSorted * elemsPerPage;
+	upperBound = localCnt;
+
+	// sort
+	printf("\n[Leftover] Sorting %lu elements in bounds [%lu, %lu)", (upperBound-lowerBound), lowerBound, upperBound);
+	double tstart_sort = omp_get_wtime();
+	__gnu_parallel::sort(keyValPairs+lowerBound, keyValPairs+upperBound, compareKeyValPairs);
+	double tend_sort = omp_get_wtime();
+	printf("\n[Leftover] Sort time: %f", tend_sort-tstart_sort);
+
+	// create bins
+	tempBin.indexmin = lowerBound;
+	unsigned int currentKey = keyValPairs[lowerBound].key;
+	for( unsigned long long int i=lowerBound+1; i<upperBound; i++ )
+	{
+		if( keyValPairs[i].key != currentKey )
+		{
+			tempBin.indexmax = i;
+
+			// check if key exists in map and initialize/append accordingly
+			auto it = keyBinsMap->find(currentKey);
+			if (it == keyBinsMap->end()) {
+				(*keyBinsMap)[currentKey] = { tempBin };
+			} else {
+				it->second.push_back( tempBin );
+			}
+
+			tempBin.indexmin = i;
+			currentKey = keyValPairs[i].key;
+		}
+	}
+
+	tempBin.indexmax = upperBound;
+
+	// check if key exists in map and initialize/append accordingly
+	auto it = keyBinsMap->find(currentKey);
+	if (it == keyBinsMap->end()) {
+		(*keyBinsMap)[currentKey] = { tempBin };
+	} else {
+		it->second.push_back( tempBin );
 	}
 }
