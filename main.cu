@@ -237,10 +237,9 @@ int main(int argc, char *argv[])
 #if PROBEANDSORT==0	
 	neighborTable= new neighborTableLookup[NDdataPoints.size()];
 #endif
-#if PROBEANDSORT==1
-	// map for "neighbor table"
+
+	// map for "neighbor table", used PROBEANDSORT==1
 	unordered_map<unsigned int, vector<struct keyValBin>> keyBinsMap;
-#endif
 
 	// managed memory key value pairs array
 	keyValPair * keyValPairs = NULL;
@@ -249,14 +248,15 @@ int main(int argc, char *argv[])
 	workCounts[0]=0;
 	workCounts[1]=0;
 
-
+	double kernelExecutionTime = 0;
+	double tableConstructionTime = 0;
 
 	pointersToNeighbors.clear();
 
 	double tstart=omp_get_wtime();	
 
 	distanceTableNDGridBatches(&NDdataPoints, &epsilon, index, gridCellLookupArr, &nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, 
-		&pointersToNeighbors, &totalNeighbors, gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, workCounts, &keyValPairs, &keyBinsMap);
+		&pointersToNeighbors, &totalNeighbors, gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, workCounts, &keyValPairs, &keyBinsMap, &kernelExecutionTime, &tableConstructionTime);
 	
 	double tend=omp_get_wtime();
 
@@ -266,9 +266,9 @@ int main(int argc, char *argv[])
 
 
 #if COUNTMETRICS==1
-	gpu_stats<<totalTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<", COMPS/CELLCOMPS: " << workCounts[0] << ", " << workCounts[1] << endl;
+	gpu_stats<<totalTimee<<", "<< kernelExecutionTime<<", "<< tableConstructionTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<", COMPS/CELLCOMPS: " << workCounts[0] << ", " << workCounts[1] << endl;
 #else
-	gpu_stats<<totalTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<endl;
+	gpu_stats<<totalTime<<", "<< kernelExecutionTime<<", "<< tableConstructionTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<endl;
 #endif
 	gpu_stats.close();
 

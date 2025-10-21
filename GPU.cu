@@ -278,7 +278,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts,
-	keyValPair ** keyValPairs, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap)
+	keyValPair ** keyValPairs, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap, double * kernelExecutionTime, double * tableConstructionTime )
 {
 
 
@@ -847,6 +847,8 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 	cudaEventDestroy(kernelStart);
 	cudaEventDestroy(kernelStop);
 
+	*kernelExecutionTime = (milliseconds / 1000);
+
 #if PROBEANDSORT==0
 	// gnu parallel sort by key 
 	double tstart_sort = omp_get_wtime();
@@ -865,6 +867,8 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 	double tableconstuctend=omp_get_wtime();	
 	
 	printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
+
+	*tableConstructionTime = (tableconstuctend - tableconstuctstart);
 #endif
 
 
@@ -1913,7 +1917,7 @@ void probeAndSort(
 	unsigned long long int localCnt;
 	unsigned long long int localPagesIdx;
 
-	keyValBin tempBin;
+	
 
 	// loop while kernel is not complete
 	while( cudaEventQuery(*kernelStop) == cudaErrorNotReady )
@@ -1942,37 +1946,8 @@ void probeAndSort(
 		double tend_sort = omp_get_wtime();
 		printf("\nSort time: %f", tend_sort-tstart_sort);
 
-		// create bins
-		tempBin.indexmin = lowerBound;
-		unsigned int currentKey = keyValPairs[lowerBound].key;
-		for( unsigned long long int i=lowerBound+1; i<upperBound; i++ )
-		{
-			if( keyValPairs[i].key != currentKey )
-			{
-				tempBin.indexmax = i;
-
-				// check if key exists in map and initialize/append accordingly
-				auto it = keyBinsMap->find(currentKey);
-				if (it == keyBinsMap->end()) {
-					(*keyBinsMap)[currentKey] = { tempBin };
-				} else {
-					it->second.push_back( tempBin );
-				}
-
-				tempBin.indexmin = i;
-				currentKey = keyValPairs[i].key;
-			}
-		}
-		tempBin.indexmax = upperBound;
-
-		// check if key exists in map and initialize/append accordingly
-		auto it = keyBinsMap->find(currentKey);
-		if (it == keyBinsMap->end()) {
-			(*keyBinsMap)[currentKey] = { tempBin };
-		} else {
-			it->second.push_back( tempBin );
-		}
-
+		// create bins and add to map
+		createBinsAndAddToMap( keyValPairs, lowerBound, upperBound, keyBinsMap );
 
 		// update pages sorted count
 		pagesSorted = localPagesIdx;
@@ -1995,6 +1970,13 @@ void probeAndSort(
 	double tend_sort = omp_get_wtime();
 	printf("\n[Leftover] Sort time: %f", tend_sort-tstart_sort);
 
+	// create bins and add to map
+	createBinsAndAddToMap( keyValPairs, lowerBound, upperBound, keyBinsMap );
+}
+
+void createBinsAndAddToMap( keyValPair * keyValPairs, uint64_t& lowerBound, uint64_t& upperBound, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap ) {
+	keyValBin tempBin;
+	
 	// create bins
 	tempBin.indexmin = lowerBound;
 	unsigned int currentKey = keyValPairs[lowerBound].key;
@@ -2016,9 +1998,9 @@ void probeAndSort(
 			currentKey = keyValPairs[i].key;
 		}
 	}
-
+	// final bin
 	tempBin.indexmax = upperBound;
-
+	
 	// check if key exists in map and initialize/append accordingly
 	auto it = keyBinsMap->find(currentKey);
 	if (it == keyBinsMap->end()) {

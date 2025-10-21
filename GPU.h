@@ -11,7 +11,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts,
-	keyValPair ** dev_keyValPairs, std::unordered_map<unsigned int, std::vector<struct keyValBin>> * keyBinsMap);
+	keyValPair ** dev_keyValPairs, std::unordered_map<unsigned int, std::vector<struct keyValBin>> * keyBinsMap, double * kernelExecutionTime, double * tableConstructionTime );
 
 
 unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, DTYPE* dev_epsilon, struct grid * dev_grid, 
@@ -96,3 +96,5 @@ void probeAndSort(
 	cudaEvent_t * kernelStop,
 	std::unordered_map<unsigned int, std::vector<struct keyValBin>> * keyBinsMap
 	);
+
+void createBinsAndAddToMap( keyValPair * keyValPairs, uint64_t& lowerBound, uint64_t& upperBound, std::unordered_map<unsigned int, std::vector<struct keyValBin>> * keyBinsMap );
