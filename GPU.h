@@ -98,3 +98,5 @@ void probeAndSort(
 	);
 
 void createBinsAndAddToMap( keyValPair * keyValPairs, uint64_t& lowerBound, uint64_t& upperBound, std::unordered_map<unsigned int, std::vector<struct keyValBin>> * keyBinsMap );
+
+void moveKeyBinsToNeighborTable( const unsigned int DBSIZE, keyValPair * dev_keyValPairs, std::unordered_map<unsigned int, std::vector<struct keyValBin>> * keyBinsMap, struct neighborTableLookup * neighborTable, int * pointersToNeighbors );

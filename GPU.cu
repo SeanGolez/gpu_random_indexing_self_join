@@ -29,6 +29,10 @@
 
 using namespace std;
 
+
+cudaMemLocation kCpuMemLocation = { cudaMemLocationTypeHost, 0 };
+
+
 //Error checking GPU calls
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -659,7 +663,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		pointersToNeighbors->push_back(tmpStruct);
 	}
 	*/
-#if PROBEANDSORT==0
+#if PROBEANDSORT==0 || USENEIGHBORTABLE==1 
 	struct neighborDataPtrs tmpStruct;
 	tmpStruct.dataPtr=NULL;
 	tmpStruct.sizeOfDataArr=0;
@@ -848,6 +852,19 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 	cudaEventDestroy(kernelStop);
 
 	*kernelExecutionTime = (milliseconds / 1000);
+
+#if PROBEANDSORT==1 && USENEIGHBORTABLE==1
+	double tableconstuctstart=omp_get_wtime();
+
+	tmpStruct.sizeOfDataArr=*dev_cnt;    
+	tmpStruct.dataPtr=new int[*dev_cnt];
+	
+	moveKeyBinsToNeighborTable(*DBSIZE, dev_keyValPairs, keyBinsMap, neighborTable, tmpStruct.dataPtr);
+
+	double tableconstuctend=omp_get_wtime();	
+	
+	printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
+#endif
 
 #if PROBEANDSORT==0
 	// gnu parallel sort by key 
@@ -1618,11 +1635,13 @@ void probeAndSort(
 				
 				//copy unsorted elems to bufferToSort using a scan
 				cntOutputBuffer = 0;
-
+				
+				/*
 				#if PREFETCH==1
 				//Prefetch chunk of unsortedBuffer to CPU memory
 				cudaMemPrefetchAsync(&unsortedBuffer[elemsLowerBound], sizeof(unsigned int)*localCnt, cudaCpuDeviceId, 0);
 				#endif
+				*/
 
 				
 				//sort buffer FROM LOWER BOUND TO UPPERBOUND
@@ -1682,10 +1701,12 @@ void probeAndSort(
 	elemsUpperBound = localCnt;
 	// elemsUpperBound = getElemsUpperBound(keyValPairs, elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
 
+	/*
 	#if PREFETCH==1
 	//Prefetch last chunk of unsortedBuffer to CPU memory
 	cudaMemPrefetchAsync(&unsortedBuffer[elemsLowerBound], sizeof(unsigned int)*maxUnsortedNELEMS, cudaCpuDeviceId, 0);
 	#endif
+	*/
 
 	// double tstart_cpy = omp_get_wtime();	
 	// parallelCopyToBuffer(bufferToSort, dev_pointIDKey, dev_pointInDistValue, elemsToSort, localCnt, rangeMin, rangeMax, elemsLowerBound);
@@ -1939,6 +1960,12 @@ void probeAndSort(
 		lowerBound = pagesSorted * elemsPerPage;
 		upperBound = localPagesIdx * elemsPerPage;
 
+		// prefetch
+		#if PREFETCH==1
+		printf("\nPrefetching...");
+		cudaMemPrefetchAsync(keyValPairs+lowerBound, sizeof(keyValPair)*(upperBound-lowerBound), kCpuMemLocation, 0);
+		#endif
+
 		// sort
 		printf("\nSorting %lu elements in bounds [%lu, %lu)", (upperBound-lowerBound), lowerBound, upperBound);
 		double tstart_sort = omp_get_wtime();
@@ -1962,6 +1989,12 @@ void probeAndSort(
 	// set bounds
 	lowerBound = pagesSorted * elemsPerPage;
 	upperBound = localCnt;
+
+	// prefetch
+	#if PREFETCH==1
+	printf("\nPrefetching...");
+	cudaMemPrefetchAsync(keyValPairs+lowerBound, sizeof(keyValPair)*(upperBound-lowerBound), kCpuMemLocation, 0);
+	#endif
 
 	// sort
 	printf("\n[Leftover] Sorting %lu elements in bounds [%lu, %lu)", (upperBound-lowerBound), lowerBound, upperBound);
@@ -2008,4 +2041,58 @@ void createBinsAndAddToMap( keyValPair * keyValPairs, uint64_t& lowerBound, uint
 	} else {
 		it->second.push_back( tempBin );
 	}
+}
+
+void moveKeyBinsToNeighborTable( const unsigned int DBSIZE, keyValPair * dev_keyValPairs, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap, struct neighborTableLookup * neighborTable, int * pointersToNeighbors )
+{
+	#if STAMP==0
+
+	// get then total number of values for each key
+	int * keyCountsMap = new int[DBSIZE];
+	#pragma omp parallel for num_threads(8)
+	for (unsigned int i=0; i<DBSIZE; i++){
+		int count = 0;
+
+		for(auto bin : (*keyBinsMap)[i] ) {
+			count += bin.indexmax - bin.indexmin;
+			if( i ==0 ) {
+				fprintf(stderr, "\nbin [%llu, %llu)", bin.indexmin, bin.indexmax);
+			}
+		}
+		
+		keyCountsMap[i] = count;
+	}
+
+	// get the index starts for the values of each key
+	int * indexStarts = new int[DBSIZE+1];
+	int indexCount = 0;
+	indexStarts[0] = indexCount;
+	for (unsigned int i=1; i<DBSIZE; i++){
+		indexCount += keyCountsMap[i-1];
+		indexStarts[i] = indexCount;
+	}
+	indexStarts[DBSIZE] = indexCount + keyCountsMap[DBSIZE-1];
+
+	// move values to array and fill neighbor table
+	#pragma omp parallel for num_threads(8)
+	for (unsigned int i=0; i<DBSIZE; i++){
+		unsigned int workingIdx = indexStarts[i];
+		for(auto bin : (*keyBinsMap)[i]) {
+			for (unsigned long long j = bin.indexmin; j < bin.indexmax; j++) {
+				pointersToNeighbors[workingIdx] = dev_keyValPairs[j].val;
+				workingIdx += 1;
+			}
+		}
+
+		neighborTable[i].pointID=i;
+		neighborTable[i].indexmin=indexStarts[i];
+		neighborTable[i].indexmax=indexStarts[i+1] - 1; //index max in neighbortable is inclusive
+	
+		//update the pointer to the data array for the values
+		neighborTable[i].dataPtr=pointersToNeighbors;
+	}
+	
+	delete[] keyCountsMap;
+	delete[] indexStarts;
+	#endif
 }

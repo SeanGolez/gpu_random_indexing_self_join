@@ -234,7 +234,7 @@ int main(int argc, char *argv[])
 	//Neighbortable storage -- the result
 	neighborTableLookup * neighborTable = NULL;
 	std::vector<struct neighborDataPtrs> pointersToNeighbors;
-#if PROBEANDSORT==0	
+#if PROBEANDSORT==0	|| USENEIGHBORTABLE == 1
 	neighborTable= new neighborTableLookup[NDdataPoints.size()];
 #endif
 
@@ -278,7 +278,7 @@ int main(int argc, char *argv[])
 	//Some related neighbortable data are shown below.
 
 	#if PRINTNEIGHBORTABLE==1
-	#if PROBEANDSORT==0
+	#if PROBEANDSORT==0 ||(PROBEANDSORT==1 && USENEIGHBORTABLE == 1)
 	#if STAMP==0
 	printNeighborTable(NDdataPoints.size(), neighborTable);
 	// for (int i=0; i<NDdataPoints.size(); i++){
@@ -338,8 +338,8 @@ int main(int argc, char *argv[])
 		}	
 	}
 	#endif //end if stamp==1
-	#endif //end if probeandsort==0
-	#if PROBEANDSORT==1
+	#endif //end if probeandsort==0 or useneighbortable == 1
+	#if PROBEANDSORT==1 && USENEIGHBORTABLE == 0
 	char neighbortablefname[]="DSSJ_out.txt";
 	ofstream DSSJ_out;
 	DSSJ_out.open(neighbortablefname,ios::out);
