@@ -865,6 +865,8 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 	double tableconstuctend=omp_get_wtime();	
 	
 	printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
+
+	*tableConstructionTime = (tableconstuctend - tableconstuctstart);
 #endif
 
 #if PROBEANDSORT==0
