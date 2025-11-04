@@ -249,6 +249,7 @@ int main(int argc, char *argv[])
 	workCounts[1]=0;
 
 	double kernelExecutionTime = 0;
+	double totalSortTime = 0;
 	double tableConstructionTime = 0;
 
 	pointersToNeighbors.clear();
@@ -256,7 +257,7 @@ int main(int argc, char *argv[])
 	double tstart=omp_get_wtime();	
 
 	distanceTableNDGridBatches(&NDdataPoints, &epsilon, index, gridCellLookupArr, &nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, 
-		&pointersToNeighbors, &totalNeighbors, gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, workCounts, &keyValPairs, &keyBinsMap, &kernelExecutionTime, &tableConstructionTime);
+		&pointersToNeighbors, &totalNeighbors, gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, workCounts, &keyValPairs, &keyBinsMap, &kernelExecutionTime, &totalSortTime, &tableConstructionTime);
 	
 	double tend=omp_get_wtime();
 
@@ -266,9 +267,9 @@ int main(int argc, char *argv[])
 
 
 #if COUNTMETRICS==1
-	gpu_stats<<totalTimee<<", "<< kernelExecutionTime<<", "<< tableConstructionTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/PROBEANDSORT/PAGESIZE/SLEEPSEC/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<< ", "<<PROBEANDSORT<<", "<<PAGESIZE<<", "<<SLEEPSEC<<", "<<STR(DTYPE)<<", COMPS/CELLCOMPS: " << workCounts[0] << ", " << workCounts[1] << endl;
+	gpu_stats<<totalTimee<<", "<< kernelExecutionTime<<", "<< totalSortTime<<", "<< tableConstructionTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/PROBEANDSORT/PAGESIZE/SLEEPSEC/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<< ", "<<PROBEANDSORT<<", "<<PAGESIZE<<", "<<SLEEPSEC<<", "<<STR(DTYPE)<<", COMPS/CELLCOMPS: " << workCounts[0] << ", " << workCounts[1] << endl;
 #else
-	gpu_stats<<totalTime<<", "<< kernelExecutionTime<<", "<< tableConstructionTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/PROBEANDSORT/PAGESIZE/SLEEPSEC/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<< ", "<<PROBEANDSORT<<", "<<PAGESIZE<<", "<<SLEEPSEC<<", "<<STR(DTYPE)<<endl;
+	gpu_stats<<totalTime<<", "<< kernelExecutionTime<<", "<< totalSortTime<<", "<< tableConstructionTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/PROBEANDSORT/PAGESIZE/SLEEPSEC/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<< ", "<<PROBEANDSORT<<", "<<PAGESIZE<<", "<<SLEEPSEC<<", "<<STR(DTYPE)<<endl;
 #endif
 	gpu_stats.close();
 

@@ -282,7 +282,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts,
-	keyValPair ** keyValPairs, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap, double * kernelExecutionTime, double * tableConstructionTime )
+	keyValPair ** keyValPairs, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap, 
+	double * kernelExecutionTime, double * totalSortTime, double * tableConstructionTime )
 {
 
 
@@ -834,7 +835,7 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 	}
 
 #if PROBEANDSORT==1
-	probeAndSort(dev_keyValPairs, dev_cnt, keyValElementsSize, *DBSIZE, &kernelStop, keyBinsMap);
+	probeAndSort(dev_keyValPairs, dev_cnt, keyValElementsSize, *DBSIZE, &kernelStop, keyBinsMap, totalSortTime);
 #endif
 
 	cudaEventSynchronize(kernelStop);
@@ -873,6 +874,8 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 	__gnu_parallel::sort(dev_keyValPairs, dev_keyValPairs+*dev_cnt, compareKeyValPairs);
 	double tend_sort = omp_get_wtime();
 	printf("\nSort time: %f", (tend_sort - tstart_sort));
+
+	*totalSortTime = (tend_sort - tstart_sort);
 
 	double tableconstuctstart=omp_get_wtime();
 	//set the number of neighbors in the pointer struct:
@@ -1921,7 +1924,8 @@ void probeAndSort(
 	const unsigned long long int maxUnsortedNELEMS, 
 	const unsigned int numElemsCompletedArray,
 	cudaEvent_t * kernelStop,
-	unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap
+	unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap,
+	double * totalSortTime
 	)
 {
 	// set bounds
@@ -1973,6 +1977,8 @@ void probeAndSort(
 		double tend_sort = omp_get_wtime();
 		printf("\nSort time: %f", tend_sort-tstart_sort);
 
+		*totalSortTime += tend_sort-tstart_sort;
+
 		// create bins and add to map
 		createBinsAndAddToMap( keyValPairs, lowerBound, upperBound, keyBinsMap );
 
@@ -2002,6 +2008,8 @@ void probeAndSort(
 	__gnu_parallel::sort(keyValPairs+lowerBound, keyValPairs+upperBound, compareKeyValPairs);
 	double tend_sort = omp_get_wtime();
 	printf("\n[Leftover] Sort time: %f", tend_sort-tstart_sort);
+
+	*totalSortTime += tend_sort-tstart_sort;
 
 	// create bins and add to map
 	createBinsAndAddToMap( keyValPairs, lowerBound, upperBound, keyBinsMap );
