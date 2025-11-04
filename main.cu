@@ -266,9 +266,9 @@ int main(int argc, char *argv[])
 
 
 #if COUNTMETRICS==1
-	gpu_stats<<totalTimee<<", "<< kernelExecutionTime<<", "<< tableConstructionTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<", COMPS/CELLCOMPS: " << workCounts[0] << ", " << workCounts[1] << endl;
+	gpu_stats<<totalTimee<<", "<< kernelExecutionTime<<", "<< tableConstructionTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/PROBEANDSORT/PAGESIZE/SLEEPSEC/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<< ", "<<PROBEANDSORT<<", "<<PAGESIZE<<", "<<SLEEPSEC<<", "<<STR(DTYPE)<<", COMPS/CELLCOMPS: " << workCounts[0] << ", " << workCounts[1] << endl;
 #else
-	gpu_stats<<totalTime<<", "<< kernelExecutionTime<<", "<< tableConstructionTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<endl;
+	gpu_stats<<totalTime<<", "<< kernelExecutionTime<<", "<< tableConstructionTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/PROBEANDSORT/PAGESIZE/SLEEPSEC/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<< ", "<<PROBEANDSORT<<", "<<PAGESIZE<<", "<<SLEEPSEC<<", "<<STR(DTYPE)<<endl;
 #endif
 	gpu_stats.close();
 
