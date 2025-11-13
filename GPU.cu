@@ -2029,13 +2029,8 @@ void createBinsAndAddToMap( keyValPair * keyValPairs, uint64_t& lowerBound, uint
 		{
 			tempBin.indexmax = i;
 
-			// check if key exists in map and initialize/append accordingly
-			auto it = keyBinsMap->find(currentKey);
-			if (it == keyBinsMap->end()) {
-				(*keyBinsMap)[currentKey] = { tempBin };
-			} else {
-				it->second.push_back( tempBin );
-			}
+			// add bin to map
+			(*keyBinsMap)[currentKey].push_back( tempBin );
 
 			tempBin.indexmin = i;
 			currentKey = keyValPairs[i].key;
@@ -2044,13 +2039,8 @@ void createBinsAndAddToMap( keyValPair * keyValPairs, uint64_t& lowerBound, uint
 	// final bin
 	tempBin.indexmax = upperBound;
 	
-	// check if key exists in map and initialize/append accordingly
-	auto it = keyBinsMap->find(currentKey);
-	if (it == keyBinsMap->end()) {
-		(*keyBinsMap)[currentKey] = { tempBin };
-	} else {
-		it->second.push_back( tempBin );
-	}
+	// add bin to map
+	(*keyBinsMap)[currentKey].push_back( tempBin );
 }
 
 void moveKeyBinsToNeighborTable( const unsigned int DBSIZE, keyValPair * dev_keyValPairs, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap, struct neighborTableLookup * neighborTable, int * pointersToNeighbors )
@@ -2065,9 +2055,6 @@ void moveKeyBinsToNeighborTable( const unsigned int DBSIZE, keyValPair * dev_key
 
 		for(auto bin : (*keyBinsMap)[i] ) {
 			count += bin.indexmax - bin.indexmin;
-			if( i ==0 ) {
-				fprintf(stderr, "\nbin [%llu, %llu)", bin.indexmin, bin.indexmax);
-			}
 		}
 		
 		keyCountsMap[i] = count;
