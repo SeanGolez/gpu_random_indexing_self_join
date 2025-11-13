@@ -2018,38 +2018,49 @@ void probeAndSort(
 }
 
 void createBinsAndAddToMap( keyValPair * keyValPairs, uint64_t& lowerBound, uint64_t& upperBound, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap ) {
-	keyValBin tempBin;
-	
-	// create bins
-	tempBin.indexmin = lowerBound;
-	unsigned int currentKey = keyValPairs[lowerBound].key;
-	for( unsigned long long int i=lowerBound+1; i<upperBound; i++ )
+	int numBinningThreads = 8;
+	int threadSectionSize = ((upperBound-lowerBound) / numBinningThreads);
+
+	#pragma omp parallel for num_threads(numBinningThreads)
+	for(unsigned int i=0; i<numBinningThreads; i++)
 	{
-		if( keyValPairs[i].key != currentKey )
+		uint64_t threadLowerBound = lowerBound + (threadSectionSize * i);
+		uint64_t threadUpperBound = (i < numBinningThreads-1) ? threadLowerBound + threadSectionSize : upperBound;
+
+		unordered_map<unsigned int, vector<struct keyValBin>> localMap;
+
+		keyValBin tempBin;
+
+		// create bins
+		tempBin.indexmin = threadLowerBound;
+		unsigned int currentKey = keyValPairs[threadLowerBound].key;
+		for( unsigned long long int j=threadLowerBound+1; j<threadUpperBound; j++ )
 		{
-			tempBin.indexmax = i;
+			if( keyValPairs[j].key != currentKey )
+			{
+				tempBin.indexmax = j;
 
-			// check if key exists in map and initialize/append accordingly
-			auto it = keyBinsMap->find(currentKey);
-			if (it == keyBinsMap->end()) {
-				(*keyBinsMap)[currentKey] = { tempBin };
-			} else {
-				it->second.push_back( tempBin );
+				// add bin to local map
+				localMap[currentKey].push_back(tempBin);
+
+				tempBin.indexmin = j;
+				currentKey = keyValPairs[j].key;
 			}
-
-			tempBin.indexmin = i;
-			currentKey = keyValPairs[i].key;
 		}
-	}
-	// final bin
-	tempBin.indexmax = upperBound;
-	
-	// check if key exists in map and initialize/append accordingly
-	auto it = keyBinsMap->find(currentKey);
-	if (it == keyBinsMap->end()) {
-		(*keyBinsMap)[currentKey] = { tempBin };
-	} else {
-		it->second.push_back( tempBin );
+		// final bin
+		tempBin.indexmax = threadUpperBound;
+
+		// add bin to local map
+		localMap[currentKey].push_back(tempBin);
+
+		// Merge into global map
+		#pragma omp critical
+		{
+			for (auto &p : localMap) {
+				auto &vec = (*keyBinsMap)[p.first];
+				vec.insert(vec.end(), p.second.begin(), p.second.end());
+			}
+		}
 	}
 }
 
