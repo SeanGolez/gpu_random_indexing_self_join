@@ -105,7 +105,7 @@
 					   //1 do probe-and-sort
 					   //-1 no sorting at all (as a baseline)
 
-#define SLEEPSEC 0.25 //Number of seconds to wait until probing the count produced on the GPU
+#define SLEEPSEC 1 //Number of seconds to wait until probing the count produced on the GPU
 
 #define PAGESIZE 4 //Unified Memory page size (in KiB)
 
@@ -123,6 +123,8 @@
 //parallel CPU parameters for OpenMP
 #define NCOPYTHREADS 8 //number of threads for parallel scan operations: e.g., copies on the CPU and reductions
 					//The number of threads should be obtained from stream benchmarks or similar.
+
+#define NBINNINGTHREADS 8 //number of threads for parallel binning after each probe-and-sort
 
 //end parallel CPU parameters for OpenMP
 //////////////////////////

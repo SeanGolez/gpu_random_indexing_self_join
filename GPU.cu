@@ -2018,7 +2018,7 @@ void probeAndSort(
 }
 
 void createBinsAndAddToMap( keyValPair * keyValPairs, uint64_t& lowerBound, uint64_t& upperBound, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap ) {
-	int numBinningThreads = 8;
+	int numBinningThreads = NBINNINGTHREADS;
 	int threadSectionSize = ((upperBound-lowerBound) / numBinningThreads);
 
 	#pragma omp parallel for num_threads(numBinningThreads)
