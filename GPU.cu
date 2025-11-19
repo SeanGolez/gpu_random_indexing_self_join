@@ -29,8 +29,9 @@
 
 using namespace std;
 
-
+#if PREFETCH==1
 cudaMemLocation kCpuMemLocation = { cudaMemLocationTypeHost, 0 };
+#endif
 
 
 //Error checking GPU calls
@@ -1935,7 +1936,7 @@ void probeAndSort(
 	uint64_t upperBound = 0;
 
 	// get the number of elements in one page
-	unsigned int elemsPerPage = ((PAGESIZE) * (1024)) / sizeof(unsigned int);
+	unsigned int elemsPerPage = ((PAGESIZE) * (1024)) / sizeof(keyValPair);
 	printf("\nelemsPerPage: %u", elemsPerPage);
 
 	// keep track of the number of pages sorted
@@ -2017,6 +2018,7 @@ void probeAndSort(
 	createBinsAndAddToMap( keyValPairs, lowerBound, upperBound, keyBinsMap );
 }
 
+// NOTE: bins will be split if it is where one thread ends and one thread starts
 void createBinsAndAddToMap( keyValPair * keyValPairs, uint64_t& lowerBound, uint64_t& upperBound, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap ) {
 	int numBinningThreads = NBINNINGTHREADS;
 	int threadSectionSize = ((upperBound-lowerBound) / numBinningThreads);
@@ -2076,9 +2078,6 @@ void moveKeyBinsToNeighborTable( const unsigned int DBSIZE, keyValPair * dev_key
 
 		for(auto bin : (*keyBinsMap)[i] ) {
 			count += bin.indexmax - bin.indexmin;
-			if( i ==0 ) {
-				fprintf(stderr, "\nbin [%llu, %llu)", bin.indexmin, bin.indexmax);
-			}
 		}
 		
 		keyCountsMap[i] = count;
