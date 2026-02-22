@@ -283,7 +283,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts,
 	keyValPair ** keyValPairs, unordered_map<unsigned int, vector<struct keyValBin>> * keyBinsMap, 
-	double * kernelExecutionTime, double * totalSortTime, double * tableConstructionTime )
+	struct times * times)
 {
 
 
@@ -720,8 +720,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	// gpuErrchk(cudaMallocManaged((void **)&dev_pointIDKey, keyValElementsSize * sizeof(unsigned int)));
 	// gpuErrchk(cudaMallocManaged((void **)&dev_pointInDistValue, keyValElementsSize * sizeof(unsigned int)));
 	
+	double tstartuvmalloc=omp_get_wtime();
+
 	keyValPair * dev_keyValPairs;
 	gpuErrchk(cudaMallocManaged((void **)&dev_keyValPairs, keyValElementsSize * sizeof(keyValPair)));
+
+	double tenduvmalloc=omp_get_wtime();
+
+	times->UVMAllocationTime = (tenduvmalloc - tstartuvmalloc);
 
 	//HOST RESULT ALLOCATION FOR THE GPU TO COPY THE DATA INTO A PINNED MEMORY ALLOCATION
 	//ON THE HOST
@@ -834,8 +840,10 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 		cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
 	}
 
+	double totalSortTime;
+
 #if PROBEANDSORT==1
-	probeAndSort(dev_keyValPairs, dev_cnt, keyValElementsSize, *DBSIZE, &kernelStop, keyBinsMap, totalSortTime);
+	probeAndSort(dev_keyValPairs, dev_cnt, keyValElementsSize, *DBSIZE, &kernelStop, keyBinsMap, &totalSortTime);
 #endif
 
 	cudaEventSynchronize(kernelStop);
@@ -852,7 +860,7 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 	cudaEventDestroy(kernelStart);
 	cudaEventDestroy(kernelStop);
 
-	*kernelExecutionTime = (milliseconds / 1000);
+	times->kernelExecutionTime = (milliseconds / 1000);
 
 #if PROBEANDSORT==1 && USENEIGHBORTABLE==1
 	double tableconstuctstart=omp_get_wtime();
@@ -862,11 +870,10 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 	
 	moveKeyBinsToNeighborTable(*DBSIZE, dev_keyValPairs, keyBinsMap, neighborTable, tmpStruct.dataPtr);
 
-	double tableconstuctend=omp_get_wtime();	
+	double tableconstuctend=omp_get_wtime();
 	
+	printf("\nTotal sort time: %f", totalSortTime);
 	printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
-
-	*tableConstructionTime = (tableconstuctend - tableconstuctstart);
 #endif
 
 #if PROBEANDSORT==0
@@ -877,11 +884,12 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 	double tend_sort = omp_get_wtime();
 	printf("\nSort time: %f", (tend_sort - tstart_sort));
 
-	*totalSortTime = (tend_sort - tstart_sort);
+	totalSortTime = (tend_sort - tstart_sort);
+	printf("\nTotal sort time: %f", totalSortTime);
 
 	double tableconstuctstart=omp_get_wtime();
 	//set the number of neighbors in the pointer struct:
-	tmpStruct.sizeOfDataArr=*dev_cnt;    
+	tmpStruct.sizeOfDataArr=*dev_cnt;
 	tmpStruct.dataPtr=new int[*dev_cnt]; // NOTE: Do not frees this from memory until program is finished
 
 	constructNeighborTableKeyValueWithPtrs( dev_keyValPairs, neighborTable, tmpStruct.dataPtr, dev_cnt);
@@ -889,8 +897,6 @@ dev_gridCellNDMaskOffsets, dev_keyValPairs, dev_orderedQueryPntIDs, dev_workCoun
 	double tableconstuctend=omp_get_wtime();	
 	
 	printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
-
-	*tableConstructionTime = (tableconstuctend - tableconstuctstart);
 #endif
 
 

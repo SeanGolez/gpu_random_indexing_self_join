@@ -12,7 +12,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * nNDMaskElems, CTYPE* workCounts,
 	keyValPair ** keyValPairs, std::unordered_map<unsigned int, std::vector<struct keyValBin>> * keyBinsMap, 
-	double * kernelExecutionTime, double * totalSortTime, double * tableConstructionTime );
+	struct times * times);
 
 
 unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, DTYPE* dev_epsilon, struct grid * dev_grid, 

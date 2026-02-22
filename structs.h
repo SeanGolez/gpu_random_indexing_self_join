@@ -14,6 +14,19 @@
 #include <thrust/sort.h>
 #include "params.h"
 
+// for various times
+struct times
+{
+	float totalTime = 0;
+    float batchEstimationTime = 0;
+	float pinnedMemoryAllocationTime = 0;
+	float UVMAllocationTime = 0;
+	float kernelExecutionTime = 0;
+    float deviceToPinnedCopyTime = 0;
+	float pinnedToPageableCopyTime = 0;
+    float resultSetAccessTime = 0;
+};
+
 //for outlier detection
 
 struct keyValNumPointsStruct

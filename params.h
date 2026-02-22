@@ -17,13 +17,13 @@
 #define BLOCKSIZE 256
  
 //Number of dimensions of the data (n)
-#define GPUNUMDIM 3
+#define GPUNUMDIM 28
 
 //Number of indexed dimensions (k)
-#define NUMINDEXEDDIM 3
+#define NUMINDEXEDDIM 6
 
 //data type of the input dataset (float or double)
-#define DTYPE float
+#define DTYPE double
 
 
 ///////////////////////
@@ -98,10 +98,10 @@
 ///////////////////////
 
 // Number of bytes to allocate for key value pairs in GiB
-#define KEYVALUEMEM 210
+#define KEYVALUEMEM 200
 
 //probe-and-sort
-#define PROBEANDSORT 1 //0 sort everything in unified memory at the end
+#define PROBEANDSORT 0
 					   //1 do probe-and-sort
 					   //-1 no sorting at all (as a baseline)
 
@@ -124,7 +124,7 @@
 #define NCOPYTHREADS 8 //number of threads for parallel scan operations: e.g., copies on the CPU and reductions
 					//The number of threads should be obtained from stream benchmarks or similar.
 
-#define NBINNINGTHREADS 8 //number of threads for parallel binning after each probe-and-sort
+#define NBINNINGTHREADS 32
 
 //end parallel CPU parameters for OpenMP
 //////////////////////////
